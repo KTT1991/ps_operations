@@ -10,76 +10,113 @@ const DEMO_USERS = {
   'maintenance@demo.com':{ password:'demo123', role:'maintenance',     name:'Maintenance Team',  uid:'demo-maint'   },
 };
 
-const isDemoKey = (key) => !key || key === 'demo-key' || key === 'your_api_key_here';
+const isDemoKey = (key) =>
+  !key || key === 'demo-key' || key === 'your_api_key_here';
 
 export function AuthProvider({ children }) {
-  const [user, setUser]       = useState(null);
-  const [userRole, setRole]   = useState(null);
+  const [user, setUser] = useState(null);
+  const [userRole, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const isDemoMode = isDemoKey(import.meta.env.VITE_FIREBASE_API_KEY);
 
   useEffect(() => {
-    if (isDemoMode) {
-      // Restore demo session from localStorage
-      try {
-        const s = localStorage.getItem('ogs_demo_session');
-        if (s) {
-          const { user: u, role } = JSON.parse(s);
-          setUser(u); setRole(role);
-        }
-      } catch {}
-      setLoading(false);
-      return;
-    }
+    let unsub;
 
-    // Real Firebase auth — lazy import to avoid crash on demo mode
-    (async () => {
+    const init = async () => {
+      if (isDemoMode) {
+        try {
+          const s = localStorage.getItem('ogs_demo_session');
+          if (s) {
+            const { user: u, role } = JSON.parse(s);
+            setUser(u);
+            setRole(role);
+          }
+        } catch {}
+        setLoading(false);
+        return;
+      }
+
       const { getAuth, onAuthStateChanged } = await import('firebase/auth');
       const { doc, getDoc } = await import('firebase/firestore');
       const { auth, db } = await import('../firebase');
-      const unsub = onAuthStateChanged(auth, async (fbUser) => {
-        if (fbUser) {
-          try {
-            const snap = await getDoc(doc(db, 'users', fbUser.uid));
-            const data = snap.exists() ? snap.data() : {};
-            setUser({ ...fbUser, ...data });
-            setRole(data.role || 'technician');
-          } catch {
-            setUser(fbUser); setRole('technician');
-          }
-        } else { setUser(null); setRole(null); }
-        setLoading(false);
+
+      unsub = onAuthStateChanged(auth, async (fbUser) => {
+        if (!fbUser) {
+          setUser(null);
+          setRole(null);
+          setLoading(false);
+          return;
+        }
+
+        try {
+          const snap = await getDoc(doc(db, 'users', fbUser.uid));
+          const data = snap.exists() ? snap.data() : {};
+
+          setUser({ ...fbUser, ...data });
+          setRole(data.role ?? 'technician');
+        } catch (e) {
+          setUser(fbUser);
+          setRole('technician');
+        }
+
+        setLoading(false); // ✅ ต้องจบหลัง role เสร็จ
       });
-      return unsub;
-    })();
+    };
+
+    init();
+
+    return () => {
+      if (unsub) unsub();
+    };
   }, []);
 
   const login = async (email, password) => {
     if (isDemoMode) {
       const acc = DEMO_USERS[email.toLowerCase()];
-      if (!acc || acc.password !== password) throw new Error('Invalid credentials');
-      const session = { user:{ email, uid:acc.uid, displayName:acc.name }, role:acc.role };
+      if (!acc || acc.password !== password)
+        throw new Error('Invalid credentials');
+
+      const session = {
+        user: { email, uid: acc.uid, displayName: acc.name },
+        role: acc.role
+      };
+
       localStorage.setItem('ogs_demo_session', JSON.stringify(session));
-      setUser(session.user); setRole(session.role);
+      setUser(session.user);
+      setRole(session.role);
+
       return session;
     }
-    const { getAuth, signInWithEmailAndPassword } = await import('firebase/auth');
+
+    const { signInWithEmailAndPassword } = await import('firebase/auth');
     const { auth } = await import('../firebase');
+
+    // ❗ สำคัญ: login อย่างเดียว ไม่ navigate ที่นี่
     return signInWithEmailAndPassword(auth, email, password);
   };
 
   const logout = async () => {
     if (isDemoMode) {
       localStorage.removeItem('ogs_demo_session');
-      setUser(null); setRole(null); return;
+      setUser(null);
+      setRole(null);
+      return;
     }
-    const { getAuth, signOut } = await import('firebase/auth');
+
+    const { signOut } = await import('firebase/auth');
     const { auth } = await import('../firebase');
     await signOut(auth);
   };
 
   return (
-    <AuthContext.Provider value={{ user, userRole, loading, isDemoMode, login, logout }}>
+    <AuthContext.Provider value={{
+      user,
+      userRole,
+      loading,
+      isDemoMode,
+      login,
+      logout
+    }}>
       {children}
     </AuthContext.Provider>
   );
