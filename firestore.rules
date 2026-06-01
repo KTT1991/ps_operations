@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getUserRole() == 'admin';
+    }
+
+    function isOperationsManager() {
+      return isAuthenticated() && getUserRole() in ['admin', 'operations_manager'];
+    }
+
+    function isMaintenance() {
+      return isAuthenticated() && getUserRole() in ['admin', 'operations_manager', 'maintenance'];
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Assets
+    match /assets/{assetId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOperationsManager() || isMaintenance();
+      allow delete: if isAdmin();
+    }
+
+    // Projects
+    match /projects/{projectId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOperationsManager();
+      allow delete: if isAdmin();
+    }
+
+    // Maintenance records
+    match /maintenance/{recordId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isMaintenance();
+      allow delete: if isOperationsManager();
+    }
+
+    // Employees
+    match /employees/{empId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOperationsManager();
+      allow delete: if isAdmin();
+    }
+
+    // Inventory
+    match /inventory/{itemId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isMaintenance();
+      allow delete: if isOperationsManager();
+    }
+  }
+}
