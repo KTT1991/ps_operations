@@ -3,11 +3,11 @@ import { createContext, useContext, useState, useEffect } from 'react';
 const AuthContext = createContext(null);
 
 const DEMO_USERS = {
-  'admin@demo.com':   { password:'demo123', role:'admin',              name:'Admin User',       uid:'demo-admin'   },
-  'manager@demo.com': { password:'demo123', role:'operations_manager', name:'Operations Manager',uid:'demo-manager' },
-  'tech@demo.com':    { password:'demo123', role:'technician',         name:'Field Technician',  uid:'demo-tech'    },
-  'exec@demo.com':    { password:'demo123', role:'executive',          name:'Executive Viewer',  uid:'demo-exec'    },
-  'maintenance@demo.com':{ password:'demo123', role:'maintenance',     name:'Maintenance Team',  uid:'demo-maint'   },
+  'admin@demo.com':   { password:'demo123', role:'admin', name:'Admin User', uid:'demo-admin' },
+  'manager@demo.com': { password:'demo123', role:'operations_manager', name:'Operations Manager', uid:'demo-manager' },
+  'tech@demo.com':    { password:'demo123', role:'technician', name:'Field Technician', uid:'demo-tech' },
+  'exec@demo.com':    { password:'demo123', role:'executive', name:'Executive Viewer', uid:'demo-exec' },
+  'maintenance@demo.com':{ password:'demo123', role:'maintenance', name:'Maintenance Team', uid:'demo-maint' },
 };
 
 const isDemoKey = (key) =>
@@ -17,6 +17,8 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [userRole, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authReady, setAuthReady] = useState(false); // ⭐ ADD
+
   const isDemoMode = isDemoKey(import.meta.env.VITE_FIREBASE_API_KEY);
 
   useEffect(() => {
@@ -32,11 +34,13 @@ export function AuthProvider({ children }) {
             setRole(role);
           }
         } catch {}
+
+        setAuthReady(true);
         setLoading(false);
         return;
       }
 
-      const { getAuth, onAuthStateChanged } = await import('firebase/auth');
+      const { onAuthStateChanged } = await import('firebase/auth');
       const { doc, getDoc } = await import('firebase/firestore');
       const { auth, db } = await import('../firebase');
 
@@ -44,6 +48,7 @@ export function AuthProvider({ children }) {
         if (!fbUser) {
           setUser(null);
           setRole(null);
+          setAuthReady(true);
           setLoading(false);
           return;
         }
@@ -54,12 +59,13 @@ export function AuthProvider({ children }) {
 
           setUser({ ...fbUser, ...data });
           setRole(data.role ?? 'technician');
-        } catch (e) {
+        } catch {
           setUser(fbUser);
           setRole('technician');
         }
 
-        setLoading(false); // ✅ ต้องจบหลัง role เสร็จ
+        setAuthReady(true);   // ⭐ สำคัญ
+        setLoading(false);
       });
     };
 
@@ -84,6 +90,7 @@ export function AuthProvider({ children }) {
       localStorage.setItem('ogs_demo_session', JSON.stringify(session));
       setUser(session.user);
       setRole(session.role);
+      setAuthReady(true);
 
       return session;
     }
@@ -91,7 +98,6 @@ export function AuthProvider({ children }) {
     const { signInWithEmailAndPassword } = await import('firebase/auth');
     const { auth } = await import('../firebase');
 
-    // ❗ สำคัญ: login อย่างเดียว ไม่ navigate ที่นี่
     return signInWithEmailAndPassword(auth, email, password);
   };
 
@@ -100,6 +106,7 @@ export function AuthProvider({ children }) {
       localStorage.removeItem('ogs_demo_session');
       setUser(null);
       setRole(null);
+      setAuthReady(false);
       return;
     }
 
@@ -113,6 +120,7 @@ export function AuthProvider({ children }) {
       user,
       userRole,
       loading,
+      authReady,   // ⭐ IMPORTANT
       isDemoMode,
       login,
       logout

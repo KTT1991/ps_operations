@@ -15,16 +15,34 @@ import ResourcePlanningPage from './components/planning/ResourcePlanningPage';
 import ReportsPage from './components/reports/ReportsPage';
 
 function ProtectedRoute({ children }) {
-  const { user, loading } = useAuth();
-  if (loading) return (
-    <div className="flex items-center justify-center min-h-screen" style={{background:'#0a0f1a'}}>
-      <div className="text-center space-y-4">
-        <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto"/>
-        <p className="text-sm" style={{color:'#64748b'}}>Loading OGS OpsCenter...</p>
+  const { user, userRole, loading, authReady } = useAuth();
+
+  if (loading || !authReady) {
+    return (
+      <div className="flex items-center justify-center min-h-screen" style={{background:'#0a0f1a'}}>
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto"/>
+          <p className="text-sm" style={{color:'#64748b'}}>
+            Loading OGS OpsCenter...
+          </p>
+        </div>
       </div>
-    </div>
-  );
-  return user ? children : <Navigate to="/login" replace/>;
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!userRole) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        Loading role...
+      </div>
+    );
+  }
+
+  return children;
 }
 
 export default function App() {
