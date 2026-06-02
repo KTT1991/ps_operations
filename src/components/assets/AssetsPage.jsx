@@ -3,7 +3,7 @@ import {
   Package, Plus, Search, Download, Edit, Trash2,
   AlertTriangle, X, ChevronRight
 } from 'lucide-react';
-import { assetsService } from '../../services/firebaseService';
+import { assetsService, projectsService } from '../../services/firebaseService';
 import { exportAssetsToExcel, exportAssetsToPDF } from '../../utils/exportUtils';
 import { differenceInDays, parseISO } from 'date-fns';
 import clsx from 'clsx';
@@ -86,7 +86,7 @@ function AssetModal({ asset, onClose, onSave }) {
               <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className="input-field"/>
             </div>
             {[
-              ['id','Asset No. / ID'],['serialNumber','Serial / Mfr. No.'],
+              ['assetNo','Asset No.'],['serialNumber','Serial / Mfr. No.'],
               ['type','Type'],['category','Category'],
               ['manufacturer','Manufacturer / Vendor'],['model','Model'],
               ['location','Location'],['condition','Condition'],
@@ -146,6 +146,7 @@ function AssetModal({ asset, onClose, onSave }) {
 
 export default function AssetsPage() {
   const [assets, setAssets]       = useState([]);
+  const [projects, setProjects] = useState([]); // ← เพิ่มถ้ายังไม่มี
   const [loading, setLoading]     = useState(true);
   const [search, setSearch]       = useState('');
   const [statusFilter, setStatus] = useState('All');
@@ -155,14 +156,28 @@ export default function AssetsPage() {
   const [page, setPage]           = useState(1);
   const PER_PAGE = 50;
 
-  const load = async () => { setLoading(true); setAssets(await assetsService.getAll()); setLoading(false); };
+  // แก้เป็น
+  const load = async () => {
+  setLoading(true);
+  const [a, p] = await Promise.all([
+    assetsService.getAll(),
+    projectsService.getAll(),
+  ]);
+  setAssets(a);
+  setProjects(p);
+  setLoading(false);
+  };
   useEffect(()=>{ load(); },[]);
 
   const categories = useMemo(()=>['All',...new Set(assets.map(a=>a.category).filter(Boolean))],[assets]);
 
   const filtered = useMemo(()=>assets.filter(a=>{
     const s = search.toLowerCase();
-    const m = !s||a.name?.toLowerCase().includes(s)||a.id?.toLowerCase().includes(s)||a.location?.toLowerCase().includes(s)||a.serialNumber?.toLowerCase().includes(s);
+    const m = !s||
+       a.name?.toLowerCase().includes(s)||
+      (a.assetNo || a.id)?.toLowerCase().includes(s)||
+       a.location?.toLowerCase().includes(s)||
+       a.serialNumber?.toLowerCase().includes(s);
     return m&&(statusFilter==='All'||a.status===statusFilter)&&(catFilter==='All'||a.category===catFilter);
   }),[assets,search,statusFilter,catFilter]);
 
@@ -177,22 +192,53 @@ export default function AssetsPage() {
 
   return (
     <div className="space-y-5 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="section-title flex items-center gap-2">
-            <Package className="w-5 h-5 text-orange-500"/>Asset Management
-          </h1>
-          <p className="text-[var(--t-text3)] text-sm mt-1">
-            {assets.length} assets · {assets.filter(a=>a.status==='Available').length} available · {assets.filter(a=>a.status==='In Use').length} in use
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={()=>exportAssetsToExcel(filtered)} className="btn-secondary text-xs"><Download className="w-4 h-4"/>Excel</button>
-          <button onClick={()=>exportAssetsToPDF(filtered)} className="btn-secondary text-xs"><Download className="w-4 h-4"/>PDF</button>
-          <button onClick={()=>{setSelected(null);setShowModal(true);}} className="btn-primary"><Plus className="w-4 h-4"/>Add Asset</button>
-        </div>
-      </div>
+{/* Header */}
+<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+  <div>
+    <h1 className="section-title flex items-center gap-2">
+      <Package className="w-5 h-5 text-orange-500"/>Asset Management
+    </h1>
+    <p className="text-[var(--t-text3)] text-sm mt-1">
+      {assets.length} assets · {assets.filter(a=>a.status==='Available').length} available · {assets.filter(a=>a.status==='In Use').length} in use
+    </p>
+  </div>
+  <div className="flex items-center gap-2 flex-wrap">
+    <button onClick={()=>exportAssetsToExcel(filtered)} className="btn-secondary text-xs"><Download className="w-4 h-4"/>Excel</button>
+    <button onClick={()=>exportAssetsToPDF(filtered)} className="btn-secondary text-xs"><Download className="w-4 h-4"/>PDF</button>
+
+    {/* ✅ ปุ่ม Migration — ลบทิ้งหลังใช้แล้ว */}
+    <button
+      onClick={async () => {
+        if (!confirm('รัน Migration แปลง currentProject ทั้งหมด?')) return;
+        const projs = await projectsService.getAll();
+        const allAssets = await assetsService.getAll();
+        let updated = 0;
+        for (const asset of allAssets) {
+          if (!asset.currentProject) continue;
+          if (asset.currentProject.startsWith('PRJ-')) continue;
+          const match = projs.find(p =>
+            p.name?.startsWith(asset.currentProject) ||
+            p.projectNumber === asset.currentProject
+          );
+          if (match) {
+            await assetsService.update(asset.id, {
+              currentProject: match.id,
+              projectNumber: asset.currentProject
+            });
+            updated++;
+          }
+        }
+        alert(`Migration เสร็จ! Updated ${updated} assets`);
+        load();
+      }}
+      className="btn-danger text-xs"
+    >
+      🔧 Run Migration
+    </button>
+
+    <button onClick={()=>{setSelected(null);setShowModal(true);}} className="btn-primary"><Plus className="w-4 h-4"/>Add Asset</button>
+  </div>
+</div>
 
       {/* Status bar */}
       <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
@@ -239,7 +285,7 @@ export default function AssetsPage() {
                 const cfg=STATUS_CONFIG[asset.status]||STATUS_CONFIG.Standby;
                 return (
                   <tr key={asset.id}>
-                    <td><span className="font-mono text-xs text-[var(--t-text3)]">{asset.id}</span></td>
+                    <td><span className="font-mono text-xs text-[var(--t-text3)]">{asset.assetNo || asset.id}</span></td>
                     <td>
                       <div className="font-medium text-sm max-w-[200px] truncate">{asset.name}</div>
                       {asset.serialNumber&&<div className="text-xs text-[var(--t-text3)] font-mono">{asset.serialNumber}</div>}
@@ -247,7 +293,20 @@ export default function AssetsPage() {
                     <td><span className="text-xs text-[var(--t-text3)]">{asset.category||asset.type}</span></td>
                     <td><span className={cfg.cls}><div className={clsx('w-1.5 h-1.5 rounded-full',cfg.dot)}/>{asset.status}</span></td>
                     <td><span className="text-xs text-[var(--t-text3)] block max-w-[140px] truncate">{asset.location}</span></td>
-                    <td><span className="text-xs text-[var(--t-text3)]">{asset.currentProject||'—'}</span></td>
+                    {/* แก้ตรงนี้ */}
+                   <td>
+                    <span className="text-xs text-[var(--t-text3)]">
+                    {(() => {
+                        const proj = projects.find(p => p.id === asset.currentProject);
+                        if (proj) {
+                        const num = proj.projectNumber || proj.name?.split('_')[0];
+                       return num || asset.currentProject;
+                    }
+                       // ถ้าหา project ไม่เจอ แสดงเลขเดิมที่เก็บไว้
+                          return asset.projectNumber || asset.currentProject || '—';
+                       })()}
+                    </span>
+                    </td>
                     <td><DueDateCell date={asset.maintenanceDue}/></td>
                     <td>
                       <button onClick={()=>{setSelected(asset);setShowModal(true);}} className="btn-ghost p-1.5" title="Edit">

@@ -22,6 +22,7 @@ const RISK_DARK  = { Low:'text-green-400', Medium:'text-amber-400', High:'text-r
 const EMPTY_FORM = {
   name:'', clientName:'', type:'Onshore', siteLocation:'',
   status:'Planned', riskLevel:'Medium', projectManager:'',
+  projectNumber:'',  // ← เพิ่มตรงนี้ เช่น "262197"
   mobilizationDate:'', startDate:'', endDate:'', demobilizationDate:'',
   budget:'', description:'',
 };
@@ -62,7 +63,7 @@ function ProjectModal({ project, employees, onClose, onSave, onViewTimeline }) {
         <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4"
           style={{background:'var(--t-bg2)',borderBottom:'1px solid var(--t-border)'}}>
           <h2 className="font-semibold text-sm" style={{color:'var(--t-text)'}}>
-            {project ? 'แก้ไข Project' : 'เพิ่ม Project ใหม่'}
+            {project ? 'Edit Project' : 'Add New Project'}
           </h2>
           <div className="flex items-center gap-2">
             {project && (
@@ -78,9 +79,9 @@ function ProjectModal({ project, employees, onClose, onSave, onViewTimeline }) {
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className="text-xs block mb-1" style={{color:'var(--t-text3)'}}>ชื่อ Project *</label>
+              <label className="text-xs block mb-1" style={{color:'var(--t-text3)'}}>Project Name *</label>
               <input value={form.name} onChange={e=>set('name',e.target.value)} className="input-field"
-                placeholder="เช่น Offshore Platform A — Annual Inspection 2026"/>
+                placeholder="Ex. Offshore Platform A — Annual Inspection 2026"/>
             </div>
             <div>
               <label className="text-xs block mb-1" style={{color:'var(--t-text3)'}}>Client *</label>
@@ -91,7 +92,7 @@ function ProjectModal({ project, employees, onClose, onSave, onViewTimeline }) {
               <input value={form.siteLocation} onChange={e=>set('siteLocation',e.target.value)} className="input-field"/>
             </div>
             <div>
-              <label className="text-xs block mb-1" style={{color:'var(--t-text3)'}}>ประเภทงาน</label>
+              <label className="text-xs block mb-1" style={{color:'var(--t-text3)'}}>Type</label>
               <select value={form.type} onChange={e=>set('type',e.target.value)} className="select-field">
                 {['Offshore','Onshore','Shutdown','Emergency'].map(t=><option key={t}>{t}</option>)}
               </select>
@@ -108,18 +109,33 @@ function ProjectModal({ project, employees, onClose, onSave, onViewTimeline }) {
                 {['Low','Medium','High'].map(r=><option key={r}>{r}</option>)}
               </select>
             </div>
-            <div>
-              <label className="text-xs block mb-1" style={{color:'var(--t-text3)'}}>Project Manager</label>
-              <select value={form.projectManager||''} onChange={e=>set('projectManager',e.target.value)} className="select-field">
-                <option value="">ไม่ระบุ</option>
-                {employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
-              </select>
-            </div>
+           <div>
+             <label className="text-xs block mb-1" style={{color:'var(--t-text3)'}}>Project Manager</label>
+             <input
+               type="text"
+               value={form.projectManager || ''}
+               onChange={e => set('projectManager', e.target.value)}
+               className="input-field"
+               placeholder="Enter Project Manager name"
+  />
+</div>
+           {/* ← เพิ่มตรงนี้ */}
+           <div>
+             <label className="text-xs block mb-1" style={{color:'var(--t-text3)'}}>Project Number</label>
+             <input
+               type="text"
+               value={form.projectNumber || ''}
+               onChange={e => set('projectNumber', e.target.value)}
+               className="input-field"
+               placeholder="เช่น 262197"
+             />
+           </div>
+
             {[
-              ['mobilizationDate','วัน Mobilization'],
-              ['startDate','วันเริ่มงาน'],
-              ['endDate','วันสิ้นสุดงาน'],
-              ['demobilizationDate','วัน Demobilization'],
+              ['mobilizationDate','Mobilization Date'],
+              ['startDate','Start Date'],
+              ['endDate','End Date'],
+              ['demobilizationDate','Demobilization Date'],
             ].map(([k,l])=>(
               <div key={k}>
                 <label className="text-xs block mb-1" style={{color:'var(--t-text3)'}}>{l}</label>
@@ -131,7 +147,7 @@ function ProjectModal({ project, employees, onClose, onSave, onViewTimeline }) {
               <input type="number" value={form.budget||''} onChange={e=>set('budget',e.target.value)} className="input-field"/>
             </div>
             <div className="col-span-2">
-              <label className="text-xs block mb-1" style={{color:'var(--t-text3)'}}>รายละเอียด</label>
+              <label className="text-xs block mb-1" style={{color:'var(--t-text3)'}}>Description</label>
               <textarea value={form.description||''} onChange={e=>set('description',e.target.value)}
                 rows={3} className="input-field resize-none"/>
             </div>
@@ -140,10 +156,10 @@ function ProjectModal({ project, employees, onClose, onSave, onViewTimeline }) {
 
         <div className="sticky bottom-0 z-10 flex items-center justify-between px-5 py-4"
           style={{background:'var(--t-bg2)',borderTop:'1px solid var(--t-border)'}}>
-          <div>{project&&<button onClick={del} className="btn-danger text-xs flex items-center gap-1"><Trash2 className="w-3.5 h-3.5"/>ลบ</button>}</div>
+          <div>{project&&<button onClick={del} className="btn-danger text-xs flex items-center gap-1"><Trash2 className="w-3.5 h-3.5"/>Delete</button>}</div>
           <div className="flex gap-2">
-            <button onClick={onClose} className="btn-secondary">ยกเลิก</button>
-            <button onClick={save} disabled={saving} className="btn-primary">{saving?'Saving...':'บันทึก'}</button>
+            <button onClick={onClose} className="btn-secondary">Cancel</button>
+            <button onClick={save} disabled={saving} className="btn-primary">{saving?'Saving...':'Save'}</button>
           </div>
         </div>
       </div>
@@ -155,8 +171,8 @@ function ProjectCard({ project, assets, employees, onEdit }) {
   const cfg = STATUS_CFG[project.status] || STATUS_CFG.Planned;
   const daysLeft = project.endDate ? differenceInDays(parseISO(project.endDate), new Date()) : null;
   const pm = employees.find(e=>e.id===project.projectManager);
-  const reqEquip = (project.requiredEquipment||[]).length;
-  const reqTech  = (project.requiredTechnicians||[]).length;
+  const actualEquip = assets.filter(a => a.currentProject === project.id).length;
+  const actualTech  = employees.filter(e => e.currentProject === project.id).length;
 
   return (
     <div className="card hover:border-[var(--t-border2)] transition-all cursor-pointer"
@@ -235,8 +251,8 @@ function ProjectCard({ project, assets, employees, onEdit }) {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-2 text-xs">
           {[
-            {Icon:Package, label:'Equipment', value:reqEquip||'—'},
-            {Icon:Users,   label:'Technicians',value:reqTech||'—'},
+            {Icon:Package, label:'Equipment',   value:actualEquip||'—'},
+            {Icon:Users,   label:'Technicians', value:actualTech||'—'}, 
             {Icon:Calendar,label:'Budget', value:project.budget?`฿${(project.budget/1000000).toFixed(1)}M`:'—'},
           ].map(({Icon,label,value})=>(
             <div key={label} className="rounded-lg p-2 text-center" style={{background:'var(--t-bg3)'}}>
@@ -306,7 +322,7 @@ export default function ProjectsPage() {
             <Download className="w-4 h-4"/>Excel
           </button>
           <button onClick={()=>{setSelected(null);setShowModal(true);}} className="btn-primary">
-            <Plus className="w-4 h-4"/>เพิ่ม Project
+            <Plus className="w-4 h-4"/>Add Project
           </button>
         </div>
       </div>

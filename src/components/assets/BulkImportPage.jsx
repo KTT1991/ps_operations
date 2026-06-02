@@ -6,6 +6,9 @@ import { realAssets } from '../../data/assetData';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 
+const encodeAssetId = (assetId) =>
+  encodeURIComponent(assetId);
+
 const ASSET_COLUMNS = [
   { key: 'id',           label: 'ASSET NO.',        required: true },
   { key: 'name',         label: 'DESCRIPTION',      required: true },
@@ -62,7 +65,16 @@ export default function BulkImportPage() {
       const batch = realAssets.slice(i, i + batchSize);
       for (const asset of batch) {
         try {
-          await assetsService.create(asset);
+          const firestoreId = encodeAssetId(asset.id);
+
+          await assetsService.create({
+             ...asset,
+            assetNo: asset.id, // เก็บ Asset No. จริงไว้
+            id: asset.id
+            .replaceAll('/', '_')
+            .replaceAll('"', '')
+            .replaceAll(' ', '-')
+      });
           success++;
         } catch (err) {
           failed++;

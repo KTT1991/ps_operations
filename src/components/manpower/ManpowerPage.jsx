@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Users, Plus, Search, Download, AlertTriangle, X, Trash2 } from 'lucide-react';
+import { Users, Plus, Search, Download, AlertTriangle, X, Trash2, History } from 'lucide-react';
 import { employeesService, projectsService } from '../../services/firebaseService';
 import { exportManpowerToExcel } from '../../utils/exportUtils';
-import { differenceInDays, parseISO } from 'date-fns';
+import { differenceInDays, parseISO, format } from 'date-fns';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 
@@ -14,7 +14,6 @@ const AVAILABILITY_CONFIG = {
   Training:   { color:'text-purple-400', bg:'bg-purple-900/30 border-purple-700/50',dot:'bg-purple-500' },
 };
 
-// Default cert types — user can add their own per employee
 const DEFAULT_CERTS = ['BOSIET','HUET','H2S Safety','Medical','Offshore Survival','CompEx','CSWIP','PMP'];
 
 function EmployeeModal({ employee, projects, onClose, onSave }) {
@@ -23,11 +22,7 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
     availability:'Available', rotation:'Onshore', utilization:0,
     currentProject:'', certifications:'', skills:'', notes:'',
   });
-  // Flexible cert fields — list of { label, expiry }
-  const [certs, setCerts] = useState(
-    employee?.certFields || []
-  );
-  // Flexible custom fields
+  const [certs, setCerts] = useState(employee?.certFields || []);
   const [customFields, setCustomFields] = useState(employee?.customFields || []);
   const [saving, setSaving] = useState(false);
   const [newCertLabel, setNewCertLabel] = useState('');
@@ -43,6 +38,30 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
     if (!form.name) { toast.error('กรอกชื่อพนักงานด้วย'); return; }
     setSaving(true);
     try {
+      // ── Assignment History Logic ──
+      let newHistory = [...(employee?.assignmentHistory || [])];
+      const prevProject = employee?.currentProject || '';
+      const nextProject = form.currentProject || '';
+
+      if (nextProject !== prevProject) {
+        // ปิด endDate งานเก่า
+        newHistory = newHistory.map(h =>
+          !h.endDate ? { ...h, endDate: format(new Date(), 'yyyy-MM-dd') } : h
+        );
+        // เปิดงานใหม่ (ถ้ามี)
+        if (nextProject) {
+          const proj = projects.find(p => p.id === nextProject);
+          newHistory.push({
+            projectId: nextProject,
+            projectName: proj?.name || nextProject,
+            projectNumber: proj?.projectNumber || proj?.name?.split('_')[0] || '',
+            startDate: format(new Date(), 'yyyy-MM-dd'),
+            endDate: null,
+            role: form.position || '',
+          });
+        }
+      }
+
       const data = {
         ...form,
         certifications: typeof form.certifications === 'string'
@@ -53,9 +72,28 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
           : form.skills || [],
         certFields: certs,
         customFields,
+        assignmentHistory: newHistory,
       };
-      if (employee?.id) { await employeesService.update(employee.id, data); toast.success('แก้ไขแล้ว'); }
-      else { await employeesService.create({ ...data, id:`EMP-${Date.now()}` }); toast.success('เพิ่มพนักงานแล้ว'); }
+
+      if (employee?.id) {
+        await employeesService.update(employee.id, data);
+        toast.success('แก้ไขแล้ว');
+      } else {
+        // พนักงานใหม่ — เริ่ม history ทันทีถ้ามี project
+        if (nextProject) {
+          const proj = projects.find(p => p.id === nextProject);
+          data.assignmentHistory = [{
+            projectId: nextProject,
+            projectName: proj?.name || nextProject,
+            projectNumber: proj?.projectNumber || proj?.name?.split('_')[0] || '',
+            startDate: format(new Date(), 'yyyy-MM-dd'),
+            endDate: null,
+            role: form.position || '',
+          }];
+        }
+        await employeesService.create({ ...data, id:`EMP-${Date.now()}` });
+        toast.success('เพิ่มพนักงานแล้ว');
+      }
       onSave(); onClose();
     } catch { toast.error('บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
   };
@@ -66,12 +104,14 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
     toast.success('ลบแล้ว'); onSave(); onClose();
   };
 
+  const history = [...(employee?.assignmentHistory || [])].reverse();
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={e => e.target===e.currentTarget && onClose()}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="relative modal-bg border rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-fade-in shadow-2xl">
         <div className="sticky top-0 modal-bg z-10 flex items-center justify-between px-5 py-4 border-b">
-          <h2 className="font-semibold text-sm">{employee ? 'แก้ไขพนักงาน' : 'เพิ่มพนักงานใหม่'}</h2>
+          <h2 className="font-semibold text-sm">{employee ? 'Edit Employee' : 'Add New Employee'}</h2>
           <button onClick={onClose} className="btn-ghost p-1"><X className="w-4 h-4" /></button>
         </div>
 
@@ -79,17 +119,17 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
           {/* Basic info */}
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className="text-xs text-[var(--t-text3)] block mb-1">ชื่อ-นามสกุล *</label>
+              <label className="text-xs text-[var(--t-text3)] block mb-1">Full Name *</label>
               <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className="input-field" />
             </div>
-            {[['position','ตำแหน่ง'],['department','แผนก'],['email','Email'],['phone','เบอร์โทร']].map(([k,l])=>(
+            {[['position','Position'],['department','Department'],['email','Email'],['phone','Phone']].map(([k,l])=>(
               <div key={k}>
                 <label className="text-xs text-[var(--t-text3)] block mb-1">{l}</label>
                 <input type="text" value={form[k]||''} onChange={e=>setForm({...form,[k]:e.target.value})} className="input-field" />
               </div>
             ))}
             <div>
-              <label className="text-xs text-[var(--t-text3)] block mb-1">สถานะ</label>
+              <label className="text-xs text-[var(--t-text3)] block mb-1">Status</label>
               <select value={form.availability} onChange={e=>setForm({...form,availability:e.target.value})} className="select-field">
                 {Object.keys(AVAILABILITY_CONFIG).map(a=><option key={a}>{a}</option>)}
               </select>
@@ -97,14 +137,14 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
             <div>
               <label className="text-xs text-[var(--t-text3)] block mb-1">Rotation</label>
               <select value={form.rotation} onChange={e=>setForm({...form,rotation:e.target.value})} className="select-field">
-                {['Onshore','14/14','21/21','28/28','อื่นๆ'].map(r=><option key={r}>{r}</option>)}
+                {['Onshore','14/14','21/21','28/28','Other'].map(r=><option key={r}>{r}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs text-[var(--t-text3)] block mb-1">Project ปัจจุบัน</label>
+              <label className="text-xs text-[var(--t-text3)] block mb-1">Current Project</label>
               <select value={form.currentProject||''} onChange={e=>setForm({...form,currentProject:e.target.value})} className="select-field">
-                <option value="">ไม่มี</option>
-                {projects.map(p=><option key={p.id} value={p.id}>{p.id} — {p.name?.substring(0,28)}</option>)}
+                <option value="">— None —</option>
+                {projects.map(p=><option key={p.id} value={p.id}>{p.projectNumber || p.name?.split('_')[0]} — {p.name?.substring(0,25)}</option>)}
               </select>
             </div>
             <div>
@@ -112,23 +152,55 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
               <input type="number" min="0" max="100" value={form.utilization||0} onChange={e=>setForm({...form,utilization:Number(e.target.value)})} className="input-field" />
             </div>
             <div className="col-span-2">
-              <label className="text-xs text-[var(--t-text3)] block mb-1">Skills (คั่นด้วยจุลภาค)</label>
-              <input value={Array.isArray(form.skills)?form.skills.join(', '):form.skills||''} onChange={e=>setForm({...form,skills:e.target.value})} className="input-field" placeholder="เช่น Welding, Rigging, NDT" />
+              <label className="text-xs text-[var(--t-text3)] block mb-1">Skills (comma separated)</label>
+              <input value={Array.isArray(form.skills)?form.skills.join(', '):form.skills||''} onChange={e=>setForm({...form,skills:e.target.value})} className="input-field" placeholder="e.g. Welding, Rigging, NDT" />
             </div>
             <div className="col-span-2">
-              <label className="text-xs text-[var(--t-text3)] block mb-1">หมายเหตุ</label>
+              <label className="text-xs text-[var(--t-text3)] block mb-1">Notes</label>
               <textarea value={form.notes||''} onChange={e=>setForm({...form,notes:e.target.value})} rows={2} className="input-field resize-none" />
             </div>
           </div>
 
-          {/* Flexible Certificates */}
+          {/* Assignment History */}
+          {history.length > 0 && (
+            <div className="border-t border-[var(--t-border)] pt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <History className="w-3.5 h-3.5" style={{color:'var(--t-text3)'}}/>
+                <div className="text-xs font-semibold text-[var(--t-text3)] uppercase tracking-wider">
+                  Assignment History ({history.length})
+                </div>
+              </div>
+              <div className="space-y-2">
+                {history.map((h, i) => (
+                  <div key={i} className="flex items-start justify-between text-xs rounded-lg px-3 py-2"
+                    style={{background:'var(--t-bg3)'}}>
+                    <div>
+                      <div className="font-medium" style={{color:'var(--t-text)'}}>
+                        {h.projectNumber && <span className="text-orange-400 mr-1">{h.projectNumber}</span>}
+                        {h.projectName?.split('_').slice(1).join('_')?.substring(0,35) || h.projectName?.substring(0,35)}
+                      </div>
+                      <div className="mt-0.5" style={{color:'var(--t-text3)'}}>
+                        {h.startDate} → {h.endDate || 'Present'}
+                        {h.role && <span className="ml-2">· {h.role}</span>}
+                      </div>
+                    </div>
+                    {!h.endDate && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-green-900/30 text-green-400 border border-green-700/50 flex-shrink-0">
+                        Current
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Certificates */}
           <div className="border-t border-[var(--t-border)] pt-4">
             <div className="text-xs font-semibold text-[var(--t-text3)] uppercase tracking-wider mb-3">
-              ใบรับรอง / Certificates
-              <span className="ml-2 font-normal text-slate-600">(เพิ่มได้ตามจริง)</span>
+              Certificates
+              <span className="ml-2 font-normal text-slate-600">(add as needed)</span>
             </div>
-
-            {/* Quick add buttons */}
             <div className="flex flex-wrap gap-1.5 mb-3">
               {DEFAULT_CERTS.filter(c => !certs.find(x=>x.label===c)).map(c => (
                 <button key={c} onClick={() => addCert(c)}
@@ -137,17 +209,13 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
                 </button>
               ))}
             </div>
-
-            {/* Manual add */}
             <div className="flex gap-2 mb-3">
-              <input value={newCertLabel} onChange={e=>setNewCertLabel(e.target.value)} placeholder="ชื่อ Certificate อื่นๆ..."
+              <input value={newCertLabel} onChange={e=>setNewCertLabel(e.target.value)} placeholder="Other certificate name..."
                 onKeyDown={e=>e.key==='Enter'&&addCert(newCertLabel)}
                 className="input-field flex-1 text-xs" />
-              <button onClick={()=>addCert(newCertLabel)} className="btn-secondary text-xs px-3">+ เพิ่ม</button>
+              <button onClick={()=>addCert(newCertLabel)} className="btn-secondary text-xs px-3">+ Add</button>
             </div>
-
-            {/* Cert list with expiry dates */}
-            {certs.length === 0 && <p className="text-xs text-slate-600">ยังไม่มี certificate — กดปุ่มด้านบนเพื่อเพิ่ม</p>}
+            {certs.length === 0 && <p className="text-xs text-slate-600">No certificates yet — click above to add</p>}
             <div className="space-y-2">
               {certs.map((c, i) => {
                 const days = c.expiry ? differenceInDays(parseISO(c.expiry), new Date()) : null;
@@ -157,7 +225,7 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
                       days === null ? 'bg-slate-600' : days < 0 ? 'bg-red-500' : days < 30 ? 'bg-amber-500' : 'bg-green-500')} />
                     <span className="text-sm text-[var(--t-text2)] w-40 flex-shrink-0">{c.label}</span>
                     <input type="date" value={c.expiry||''} onChange={e=>setCerts(cf=>cf.map((x,j)=>j===i?{...x,expiry:e.target.value}:x))}
-                      className="input-field flex-1 text-xs" placeholder="วันหมดอายุ" />
+                      className="input-field flex-1 text-xs" />
                     {days !== null && (
                       <span className={clsx('text-xs w-20 text-right flex-shrink-0',
                         days < 0 ? 'text-red-400 font-bold' : days < 30 ? 'text-amber-400' : 'text-green-400')}>
@@ -176,19 +244,19 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
           {/* Custom Fields */}
           <div className="border-t border-[var(--t-border)] pt-4">
             <div className="flex items-center justify-between mb-3">
-              <div className="text-xs font-semibold text-[var(--t-text3)] uppercase tracking-wider">ข้อมูลเพิ่มเติม (Custom)</div>
+              <div className="text-xs font-semibold text-[var(--t-text3)] uppercase tracking-wider">Custom Fields</div>
               <button onClick={() => setCustomFields(f=>[...f,{key:'',value:''}])} className="btn-ghost text-xs flex items-center gap-1">
-                <Plus className="w-3.5 h-3.5" />เพิ่มช่อง
+                <Plus className="w-3.5 h-3.5" />Add Field
               </button>
             </div>
-            {customFields.length===0 && <p className="text-xs text-slate-600">ยังไม่มีช่องเพิ่มเติม</p>}
+            {customFields.length===0 && <p className="text-xs text-slate-600">No custom fields yet</p>}
             <div className="space-y-2">
               {customFields.map((f,i)=>(
                 <div key={i} className="flex gap-2 items-center">
-                  <input placeholder="ชื่อ เช่น Employee ID, Gate Pass" value={f.key}
+                  <input placeholder="Field name e.g. Employee ID" value={f.key}
                     onChange={e=>setCustomFields(cf=>cf.map((c,j)=>j===i?{...c,key:e.target.value}:c))}
                     className="input-field w-40 flex-shrink-0 text-xs" />
-                  <input placeholder="ค่า" value={f.value}
+                  <input placeholder="Value" value={f.value}
                     onChange={e=>setCustomFields(cf=>cf.map((c,j)=>j===i?{...c,value:e.target.value}:c))}
                     className="input-field flex-1 text-xs" />
                   <button onClick={()=>setCustomFields(cf=>cf.filter((_,j)=>j!==i))} className="btn-ghost p-1 text-red-400">
@@ -201,10 +269,10 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
         </div>
 
         <div className="sticky bottom-0 modal-bg border-t px-5 py-4 flex items-center justify-between">
-          <div>{employee && <button onClick={del} className="btn-danger text-xs flex items-center gap-1"><Trash2 className="w-3.5 h-3.5" />ลบ</button>}</div>
+          <div>{employee && <button onClick={del} className="btn-danger text-xs flex items-center gap-1"><Trash2 className="w-3.5 h-3.5" />Delete</button>}</div>
           <div className="flex gap-2">
-            <button onClick={onClose} className="btn-secondary">ยกเลิก</button>
-            <button onClick={save} disabled={saving} className="btn-primary">{saving?'กำลังบันทึก...':'บันทึก'}</button>
+            <button onClick={onClose} className="btn-secondary">Cancel</button>
+            <button onClick={save} disabled={saving} className="btn-primary">{saving?'Saving...':'Save'}</button>
           </div>
         </div>
       </div>
@@ -217,6 +285,7 @@ function EmployeeCard({ emp, projects, onClick }) {
   const project = projects.find(p => p.id === emp.currentProject);
   const certs = emp.certFields || [];
   const hasCritical = certs.some(c => c.expiry && differenceInDays(parseISO(c.expiry), new Date()) < 30);
+  const historyCount = (emp.assignmentHistory || []).filter(h => h.endDate).length;
 
   return (
     <div onClick={onClick} className="card hover:border-slate-600 transition-all cursor-pointer p-4 space-y-3">
@@ -240,12 +309,21 @@ function EmployeeCard({ emp, projects, onClick }) {
       </div>
 
       <div className="flex items-center justify-between text-xs text-[var(--t-text3)]">
-        <span>{emp.department}</span><span>{emp.rotation}</span>
+        <span>{emp.department}</span>
+        <span>{emp.rotation}</span>
       </div>
 
       {project && (
         <div className="bg-blue-900/20 border border-blue-700/30 rounded-lg px-2.5 py-1.5 text-xs text-blue-400 truncate">
-          📍 {project.name?.substring(0,35)}
+          📍 {project.projectNumber || project.name?.split('_')[0]} — {project.name?.split('_').slice(1).join('_')?.substring(0,25) || project.name?.substring(0,28)}
+        </div>
+      )}
+
+      {/* History badge */}
+      {historyCount > 0 && (
+        <div className="flex items-center gap-1 text-xs" style={{color:'var(--t-text3)'}}>
+          <History className="w-3 h-3"/>
+          <span>{historyCount} previous project{historyCount > 1 ? 's' : ''}</span>
         </div>
       )}
 
@@ -259,7 +337,6 @@ function EmployeeCard({ emp, projects, onClick }) {
         </div>
       </div>
 
-      {/* Show cert expiry status */}
       {certs.length > 0 && (
         <div className="space-y-1">
           {certs.slice(0,3).map(c => {
@@ -313,7 +390,6 @@ export default function ManpowerPage() {
     return m && (availFilter==='All' || e.availability===availFilter);
   });
 
-  // Count cert expiry alerts across all employees
   const expiryAlerts = employees.filter(e => {
     const certs = e.certFields || [];
     return certs.some(c => c.expiry && differenceInDays(parseISO(c.expiry), new Date()) < 30);
@@ -335,7 +411,7 @@ export default function ManpowerPage() {
         </div>
         <div className="flex gap-2">
           <button onClick={() => exportManpowerToExcel(employees)} className="btn-secondary text-xs"><Download className="w-4 h-4" />Excel</button>
-          <button onClick={()=>{setSelected(null);setShowModal(true);}} className="btn-primary"><Plus className="w-4 h-4" />เพิ่มพนักงาน</button>
+          <button onClick={()=>{setSelected(null);setShowModal(true);}} className="btn-primary"><Plus className="w-4 h-4" />Add Employee</button>
         </div>
       </div>
 
@@ -354,7 +430,7 @@ export default function ManpowerPage() {
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--t-text3)]" />
-        <input type="text" placeholder="ค้นหาชื่อ, ตำแหน่ง, แผนก..." value={search} onChange={e=>setSearch(e.target.value)} className="input-field pl-9" />
+        <input type="text" placeholder="Search name, position, department..." value={search} onChange={e=>setSearch(e.target.value)} className="input-field pl-9" />
       </div>
 
       {loading ? (
@@ -368,7 +444,7 @@ export default function ManpowerPage() {
           ))}
           {filtered.length===0 && (
             <div className="col-span-4 text-center py-16 text-[var(--t-text3)]">
-              <Users className="w-12 h-12 mx-auto mb-2 opacity-20" />ไม่พบพนักงาน
+              <Users className="w-12 h-12 mx-auto mb-2 opacity-20" />No employees found
             </div>
           )}
         </div>

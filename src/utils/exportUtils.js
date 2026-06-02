@@ -29,7 +29,7 @@ export const exportAssetsToExcel = (assets) => {
 
   // Full asset list
   const assetData = assets.map(a => ({
-    'Asset ID': a.id,
+    'Asset No.': a.assetNo || a.id,
     'Serial Number': a.serialNumber,
     'Asset Name': a.name,
     'Type': a.type,
@@ -71,7 +71,7 @@ export const exportAssetsToExcel = (assets) => {
 
   if (calDue.length > 0) {
     const calData = calDue.map(a => ({
-      'Asset ID': a.id,
+      'Asset No.': a.assetNo || a.id,
       'Asset Name': a.name,
       'Calibration Due': a.calibrationDue,
       'Status': a.status,
@@ -190,13 +190,13 @@ export const exportAssetsToPDF = (assets) => {
   pdfHeader(doc, 'Asset Register Report');
 
   const tableData = assets.map(a => [
-    a.id, a.name, a.type, a.status, a.location,
+    a.assetNo || a.id, a.name, a.type, a.status, a.location,
     a.calibrationDue || 'N/A', a.maintenanceDue || 'N/A', `${a.utilization}%`,
   ]);
 
   doc.autoTable({
     startY: 30,
-    head: [['Asset ID', 'Name', 'Type', 'Status', 'Location', 'Cal. Due', 'Maint. Due', 'Utilization']],
+    head: [['Asset No.', 'Name', 'Type', 'Status', 'Location', 'Cal. Due', 'Maint. Due', 'Utilization']],
     body: tableData,
     styles: { fontSize: 8, cellPadding: 2 },
     headStyles: { fillColor: [234, 88, 12], textColor: 255, fontStyle: 'bold' },

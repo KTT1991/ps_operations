@@ -1,130 +1,55 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 
 const AuthContext = createContext(null);
 
-const DEMO_USERS = {
-  'admin@demo.com':   { password:'demo123', role:'admin', name:'Admin User', uid:'demo-admin' },
-  'manager@demo.com': { password:'demo123', role:'operations_manager', name:'Operations Manager', uid:'demo-manager' },
-  'tech@demo.com':    { password:'demo123', role:'technician', name:'Field Technician', uid:'demo-tech' },
-  'exec@demo.com':    { password:'demo123', role:'executive', name:'Executive Viewer', uid:'demo-exec' },
-  'maintenance@demo.com':{ password:'demo123', role:'maintenance', name:'Maintenance Team', uid:'demo-maint' },
-};
-
-const isDemoKey = (key) =>
-  !key || key === 'demo-key' || key === 'your_api_key_here';
-
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [userRole, setRole] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [authReady, setAuthReady] = useState(false); // ⭐ ADD
-
-  const isDemoMode = isDemoKey(import.meta.env.VITE_FIREBASE_API_KEY);
+  const [user,    setUser]   = useState(null);
+  const [userRole,setRole]   = useState(null);
+  const [loading, setLoading]= useState(true);
 
   useEffect(() => {
-    let unsub;
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
 
-    const init = async () => {
-      if (isDemoMode) {
-        try {
-          const s = localStorage.getItem('ogs_demo_session');
-          if (s) {
-            const { user: u, role } = JSON.parse(s);
-            setUser(u);
-            setRole(role);
-          }
-        } catch {}
-
-        setAuthReady(true);
-        setLoading(false);
-        return;
-      }
-
-      const { onAuthStateChanged } = await import('firebase/auth');
-      const { doc, getDoc } = await import('firebase/firestore');
-      const { auth, db } = await import('../firebase');
-
-      unsub = onAuthStateChanged(auth, async (fbUser) => {
-        if (!fbUser) {
-          setUser(null);
-          setRole(null);
-          setAuthReady(true);
-          setLoading(false);
-          return;
-        }
-
+      console.log('AUTH CHANGED', fbUser?.email);
+      
+      if (fbUser) {
         try {
           const snap = await getDoc(doc(db, 'users', fbUser.uid));
           const data = snap.exists() ? snap.data() : {};
-
-          setUser({ ...fbUser, ...data });
-          setRole(data.role ?? 'technician');
-        } catch {
-          setUser(fbUser);
+          setUser({
+            uid:         fbUser.uid,
+            email:       fbUser.email,
+            displayName: data.name || fbUser.email,
+          });
+          setRole(data.role || 'technician');
+        } catch (err) {
+          console.error('Role fetch error:', err);
+          setUser({ uid: fbUser.uid, email: fbUser.email, displayName: fbUser.email });
           setRole('technician');
         }
+      } else {
+        setUser(null);
+        setRole(null);
+      }
+      setLoading(false);
+    });
 
-        setAuthReady(true);   // ⭐ สำคัญ
-        setLoading(false);
-      });
-    };
-
-    init();
-
-    return () => {
-      if (unsub) unsub();
-    };
+    return () => unsubscribe();
   }, []);
 
   const login = async (email, password) => {
-    if (isDemoMode) {
-      const acc = DEMO_USERS[email.toLowerCase()];
-      if (!acc || acc.password !== password)
-        throw new Error('Invalid credentials');
-
-      const session = {
-        user: { email, uid: acc.uid, displayName: acc.name },
-        role: acc.role
-      };
-
-      localStorage.setItem('ogs_demo_session', JSON.stringify(session));
-      setUser(session.user);
-      setRole(session.role);
-      setAuthReady(true);
-
-      return session;
-    }
-
-    const { signInWithEmailAndPassword } = await import('firebase/auth');
-    const { auth } = await import('../firebase');
-
     return signInWithEmailAndPassword(auth, email, password);
   };
 
   const logout = async () => {
-    if (isDemoMode) {
-      localStorage.removeItem('ogs_demo_session');
-      setUser(null);
-      setRole(null);
-      setAuthReady(false);
-      return;
-    }
-
-    const { signOut } = await import('firebase/auth');
-    const { auth } = await import('../firebase');
     await signOut(auth);
   };
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      userRole,
-      loading,
-      authReady,   // ⭐ IMPORTANT
-      isDemoMode,
-      login,
-      logout
-    }}>
+    <AuthContext.Provider value={{ user, userRole, loading, isDemoMode: false, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

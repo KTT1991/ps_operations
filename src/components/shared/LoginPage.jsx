@@ -20,26 +20,31 @@ export default function LoginPage() {
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
-    e.preventDefault();
-    if (!email || !password) return;
-    setLoading(true);
-    try {
-      await login(email, password);
-      toast.success('Welcome to OGS OpsCenter');
-      navigate('/dashboard');
-    } catch (err) {
-      toast.error(err.message || 'Login failed');
-    } finally { setLoading(false); }
-  };
+  e.preventDefault();
+  if (!email || !password) return;
+  setLoading(true);
+  try {
+    await login(email, password);
+    toast.success('Welcome to OGS OpsCenter');
+    // ✅ ไม่มี navigate() — ให้ ProtectedRoute จัดการเอง
+  } catch (err) {
+    toast.error(err.message || 'Login failed');
+  } finally {
+    setLoading(false);
+  }
+};
 
-  const quickLogin = async (acc) => {
-    setLoading(true);
-    try {
-      await login(acc.email, acc.pass);
-      navigate('/dashboard');
-    } catch { toast.error('Quick login failed'); }
-    finally { setLoading(false); }
-  };
+const quickLogin = async (acc) => {
+  setLoading(true);
+  try {
+    await login(acc.email, acc.pass);
+    // ✅ ไม่มี navigate()
+  } catch {
+    toast.error('Quick login failed');
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4" style={{background:'#0a0f1a'}}>

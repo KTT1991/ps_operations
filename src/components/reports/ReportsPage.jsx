@@ -106,7 +106,7 @@ export default function ReportsPage() {
       })
       .sort((a, b) => a.days - b.days)
       .map(({ asset, days }) => ({
-        'Asset ID': asset.id,
+        'Asset No.': a.assetNo || a.id,
         'Asset Name': asset.name,
         'Serial Number': asset.serialNumber,
         'Type': asset.type,
@@ -170,7 +170,7 @@ export default function ReportsPage() {
       .map(a => {
         const days = differenceInDays(parseISO(a.availableDate), new Date());
         return {
-          'Asset ID': a.id,
+          'Asset No.': a.assetNo || a.id,
           'Asset Name': a.name,
           'Type': a.type,
           'Current Status': a.status,

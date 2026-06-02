@@ -14,10 +14,21 @@ import MovementPage from './components/operations/MovementPage';
 import ResourcePlanningPage from './components/planning/ResourcePlanningPage';
 import ReportsPage from './components/reports/ReportsPage';
 
-function ProtectedRoute({ children }) {
-  const { user, userRole, loading, authReady } = useAuth();
+// ป้องกัน user ที่ login แล้วกลับมาหน้า /login
+function PublicRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (user) return <Navigate to="/dashboard" replace />;
+  return children;
+}
 
-  if (loading || !authReady) {
+// ป้องกัน route ที่ต้อง login ก่อนเข้าได้
+function ProtectedRoute({ children }) {
+  const { user, userRole, loading } = useAuth();
+
+  console.log('loading=', loading, 'user=', user, 'userRole=', userRole);
+
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen" style={{background:'#0a0f1a'}}>
         <div className="text-center space-y-4">
@@ -30,16 +41,9 @@ function ProtectedRoute({ children }) {
     );
   }
 
+ 
   if (!user) {
     return <Navigate to="/login" replace />;
-  }
-
-  if (!userRole) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        Loading role...
-      </div>
-    );
   }
 
   return children;
@@ -48,7 +52,15 @@ function ProtectedRoute({ children }) {
 export default function App() {
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage/>}/>
+      <Route
+        path="/login"
+        element={
+          <PublicRoute>
+            <LoginPage/>
+          </PublicRoute>
+        }
+      />
+
       <Route path="/" element={<ProtectedRoute><Layout/></ProtectedRoute>}>
         <Route index element={<Navigate to="/dashboard" replace/>}/>
         <Route path="dashboard"   element={<Dashboard/>}/>
@@ -63,6 +75,7 @@ export default function App() {
         <Route path="planning"    element={<ResourcePlanningPage/>}/>
         <Route path="reports"     element={<ReportsPage/>}/>
       </Route>
+
       <Route path="*" element={<Navigate to="/dashboard" replace/>}/>
     </Routes>
   );

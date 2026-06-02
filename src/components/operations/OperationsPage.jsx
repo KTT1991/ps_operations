@@ -375,7 +375,7 @@ export default function OperationsPage() {
                   <th>Current Project</th>
                   <th>Rotation</th>
                   <th>Offshore Cert</th>
-                  <th>HUET</th>
+                  <th><HUET></HUET></th>
                   <th>Utilization</th>
                 </tr>
               </thead>

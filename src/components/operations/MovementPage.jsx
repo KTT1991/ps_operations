@@ -168,16 +168,26 @@ export default function MovementPage() {
   const displayed = (tab === 'active' ? [...inField, ...assets.filter(a=>a.status==='Reserved')] : [...atBase, ...damaged])
     .filter(a => {
       const s = search.toLowerCase();
-      return !s || a.name?.toLowerCase().includes(s) || a.id?.toLowerCase().includes(s) || a.location?.toLowerCase().includes(s);
+      return (
+       !s ||
+       a.name?.toLowerCase().includes(s) ||
+       (a.assetNo || a.id)?.toLowerCase().includes(s) ||
+       a.location?.toLowerCase().includes(s) ||
+       a.serialNumber?.toLowerCase().includes(s)
+     );
     });
 
   const exportLog = () => {
     const data = assets.map(a => ({
-      'Asset ID': a.id, 'Name': a.name, 'Category': a.category,
-      'Status': a.status, 'Location': a.location,
-      'Project': a.currentProject || '', 'Manifest': a.manifestNo || '',
+      'Asset No.': a.assetNo || a.id,
+      'Name': a.name,
+      'Category': a.category,
+      'Status': a.status,
+      'Location': a.location,
+      'Project': a.currentProject || '',
+      'Manifest': a.manifestNo || '',
       'Condition': a.condition,
-    }));
+}));
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(data);
     ws['!cols'] = Array(8).fill({ wch: 22 });
@@ -266,7 +276,7 @@ export default function MovementPage() {
                 const isOut = asset.status === 'In Use' || asset.status === 'Reserved';
                 return (
                   <tr key={asset.id}>
-                    <td><span className="font-mono text-xs text-[var(--t-text3)]">{asset.id}</span></td>
+                    <td><span className="font-mono text-xs text-[var(--t-text3)]">{asset.assetNo || asset.id}</span></td>
                     <td><div className="font-medium text-sm text-[var(--t-text)] max-w-[180px] truncate">{asset.name}</div></td>
                     <td><span className="text-xs text-[var(--t-text3)]">{asset.category}</span></td>
                     <td>
