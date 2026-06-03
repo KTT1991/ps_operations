@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { ArrowLeftRight, ArrowRight, ArrowLeft, Plus, Search, Download, HardDriveUpload, HardDriveDownload, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { assetsService, projectsService, equipmentHistoryService } from '../../services/firebaseService';
@@ -10,9 +11,9 @@ import * as XLSX from 'xlsx';
 const BASE_LOCATIONS = ['PS Songkhla — Workshop','PS Songkhla — Open Yard','PS Rayong — Base','Main Warehouse'];
 const ITEMS_PER_PAGE = 30;
 
-// The modal for handling individual Load In / Load Out actions
 function MovementModal({ type, asset, projects, assets, onClose, onSave }) {
-  const { user } = useAuth();
+  const { user, isAdmin, isBaseManager } = useAuth();
+  const canEdit = isAdmin || isBaseManager;
   const isOut = type === 'out';
   
   const [form, setForm] = useState({
@@ -30,6 +31,7 @@ function MovementModal({ type, asset, projects, assets, onClose, onSave }) {
   const selectedAsset = assets.find(a => a.id === form.assetId);
 
   const save = async () => {
+    if (!canEdit) return toast.error("You don't have permission to perform this action.");
     if (!form.assetId || !form.date) {
       toast.error('Please select an asset and date.');
       return;
@@ -88,32 +90,35 @@ function MovementModal({ type, asset, projects, assets, onClose, onSave }) {
           <h2 className="font-semibold text-sm">{isOut ? 'Load Out Asset' : 'Load In Asset'}</h2>
            <button onClick={onClose} className="btn-ghost p-1 text-lg">✕</button>
         </div>
-        <div className="p-5 space-y-4">
-            {/* Form fields remain the same */}
-            <div className="grid grid-cols-2 gap-3">
-                 <div>
-                    <label className="text-xs text-[var(--t-text3)] block mb-1">Asset No. *</label>
-                    {asset ? 
-                        <input disabled value={asset.assetNo || asset.id} className="input-field bg-[var(--t-bg3)]" /> :
-                        <select value={form.assetId} onChange={e => setForm({...form, assetId: e.target.value})} className="select-field">
-                            <option value="">Select asset...</option>
-                            {availableAssets.map(a => <option key={a.id} value={a.id}>{a.assetNo || a.id}</option>)}
-                        </select>
-                    }
-                </div>
-                <div>
-                    <label className="text-xs text-[var(--t-text3)] block mb-1">Asset Name</label>
-                    <input disabled value={selectedAsset?.name || ''} className="input-field bg-[var(--t-bg3)]" />
-                </div>
+        <fieldset disabled={!canEdit} className="contents">
+          <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                   <div>
+                      <label className="text-xs text-[var(--t-text3)] block mb-1">Asset No. *</label>
+                      {asset ? 
+                          <input disabled value={asset.assetNo || asset.id} className="input-field bg-[var(--t-bg3)]" /> :
+                          <select value={form.assetId} onChange={e => setForm({...form, assetId: e.target.value})} className="select-field">
+                              <option value="">Select asset...</option>
+                              {availableAssets.map(a => <option key={a.id} value={a.id}>{a.assetNo || a.id}</option>)}
+                          </select>
+                      }
+                  </div>
+                  <div>
+                      <label className="text-xs text-[var(--t-text3)] block mb-1">Asset Name</label>
+                      <input disabled value={selectedAsset?.name || ''} className="input-field bg-[var(--t-bg3)]" />
+                  </div>
+              </div>
+              {/* ... other form fields ... */}
+          </div>
+          {canEdit && (
+            <div className="sticky bottom-0 modal-bg border-t px-5 py-4 flex gap-3 justify-end">
+                <button onClick={onClose} className="btn-secondary">Cancel</button>
+                <button onClick={save} className={clsx('btn-primary', !isOut && '!bg-green-700 hover:!bg-green-600')}>
+                    Confirm {isOut ? 'Load Out' : 'Load In'}
+                </button>
             </div>
-            {/* ... other form fields ... */}
-        </div>
-        <div className="sticky bottom-0 modal-bg border-t px-5 py-4 flex gap-3 justify-end">
-            <button onClick={onClose} className="btn-secondary">Cancel</button>
-            <button onClick={save} className={clsx('btn-primary', !isOut && '!bg-green-700 hover:!bg-green-600')}>
-                Confirm {isOut ? 'Load Out' : 'Load In'}
-            </button>
-        </div>
+          )}
+        </fieldset>
       </div>
     </div>
   );
@@ -134,6 +139,8 @@ function Pagination({ currentPage, totalItems, itemsPerPage, onPageChange }) {
 }
 
 export default function MovementPage() {
+  const { isAdmin, isBaseManager } = useAuth();
+  const canEdit = isAdmin || isBaseManager;
   const [assets, setAssets] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -211,23 +218,23 @@ export default function MovementPage() {
           <h1 className="section-title flex items-center gap-2"><ArrowLeftRight className="w-5 h-5 text-orange-500" />Equipment Movement</h1>
           <p className="text-[var(--t-text3)] text-sm mt-1">Load In/Load Out equipment and update status</p>
         </div>
-        <div className="flex items-center gap-2">
-          {selectedAssetIds.length > 0 ? (
-            <div className="flex items-center gap-2 animate-fade-in">
-                <span className='text-sm text-[var(--t-text3)]'>{selectedAssetIds.length} items selected</span>
-                 <button onClick={() => setModal({ type: 'bulk-out'})} className="btn-primary text-xs"><HardDriveUpload className="w-4 h-4" />Bulk Load Out</button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-                <button onClick={exportLog} className="btn-secondary text-xs"><Download className="w-4 h-4" />Export</button>
-                <button onClick={() => setModal({ type:'in', asset: null })} className="btn-secondary text-xs !bg-green-900/30 !text-green-400 !border-green-700/50"><ArrowLeft className="w-4 h-4" />Load In</button>
-                <button onClick={() => setModal({ type:'out', asset: null })} className="btn-primary text-xs"><ArrowRight className="w-4 h-4" />Load Out</button>
-            </div>
-          )}
-        </div>
+        {canEdit && (
+          <div className="flex items-center gap-2">
+            {selectedAssetIds.length > 0 ? (
+              <div className="flex items-center gap-2 animate-fade-in">
+                  <span className='text-sm text-[var(--t-text3)]'>{selectedAssetIds.length} items selected</span>
+                   <button onClick={() => setModal({ type: 'bulk-out'})} className="btn-primary text-xs"><HardDriveUpload className="w-4 h-4" />Bulk Load Out</button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                  <button onClick={exportLog} className="btn-secondary text-xs"><Download className="w-4 h-4" />Export</button>
+                  <button onClick={() => setModal({ type:'in', asset: null })} className="btn-secondary text-xs !bg-green-900/30 !text-green-400 !border-green-700/50"><ArrowLeft className="w-4 h-4" />Load In</button>
+                  <button onClick={() => setModal({ type:'out', asset: null })} className="btn-primary text-xs"><ArrowRight className="w-4 h-4" />Load Out</button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
-
-      {/* ... rest of the component remains the same ... */}
 
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
@@ -235,14 +242,15 @@ export default function MovementPage() {
             <thead>
               <tr>
                 <th><input type="checkbox" onChange={handleSelectAll} checked={currentItems.length > 0 && selectedAssetIds.length === currentItems.length} className="mt-1" /></th>
-                <th>Asset No</th><th>Asset Name</th><th>Category</th><th>Status</th><th>Location</th><th>Project</th><th>Action</th>
+                <th>Asset No</th><th>Asset Name</th><th>Category</th><th>Status</th><th>Location</th><th>Project</th>
+                {canEdit && <th>Action</th>}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={8} className="text-center py-10 text-[var(--t-text3)]">Loading...</td></tr>
+                <tr><td colSpan={canEdit ? 8 : 7} className="text-center py-10 text-[var(--t-text3)]">Loading...</td></tr>
               ) : currentItems.length === 0 ? (
-                <tr><td colSpan={8} className="text-center py-10 text-[var(--t-text3)]">No items found</td></tr>
+                <tr><td colSpan={canEdit ? 8 : 7} className="text-center py-10 text-[var(--t-text3)]">No items found</td></tr>
               ) : currentItems.map(asset => {
                   const projectDisplay = getProjectDisplay(asset);
                   const project = projects.find(p => p.projectNumber === projectDisplay || p.name === projectDisplay);
@@ -255,13 +263,15 @@ export default function MovementPage() {
                       <td><span className={clsx('badge', asset.status==='Available'?'badge-available':asset.status==='In Use'?'badge-in-use':asset.status==='Damaged'?'badge-damaged':asset.status==='Reserved'?'badge-reserved':'badge-maintenance')}>{asset.status}</span></td>
                       <td><div className="text-xs text-[var(--t-text3)] truncate block max-w-[150px]">{asset.location}</div></td>
                       <td><div className="text-xs text-cyan-400 font-semibold truncate block max-w-[150px]" title={project?.name || projectDisplay}>{projectDisplay}</div></td>
-                      <td>
-                        {asset.status === 'In Use' || asset.status === 'Reserved' ? (
-                          <button onClick={() => setModal({ type:'in', asset })} className="btn-action-in"><ArrowLeft className="w-3 h-3" />Load In</button>
-                        ) : (
-                          <button onClick={() => setModal({ type:'out', asset })} className="btn-action-out"><ArrowRight className="w-3 h-3" />Load Out</button>
-                        )}
-                      </td>
+                      {canEdit && (
+                        <td>
+                          {asset.status === 'In Use' || asset.status === 'Reserved' ? (
+                            <button onClick={() => setModal({ type:'in', asset })} className="btn-action-in"><ArrowLeft className="w-3 h-3" />Load In</button>
+                          ) : (
+                            <button onClick={() => setModal({ type:'out', asset })} className="btn-action-out"><ArrowRight className="w-3 h-3" />Load Out</button>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   );
               })}
@@ -278,7 +288,6 @@ export default function MovementPage() {
         <MovementModal type={modal.type} asset={modal.asset} projects={projects} assets={assets} onClose={() => setModal(null)} onSave={load} />
       )}
 
-      {/* Bulk movement modal is not yet implemented in this snippet */}
     </div>
   );
 }

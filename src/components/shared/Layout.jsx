@@ -1,4 +1,5 @@
-import { useState } from 'react';
+
+import { useState, useMemo } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -7,7 +8,7 @@ import {
   LayoutDashboard, Package, FolderKanban, Wrench, Users,
   Radio, FileBarChart, LogOut, Zap, Bell, Menu,
   ChevronRight, UserCircle, CalendarDays, Sun, Moon,
-  ArrowLeftRight, Upload, CalendarCheck, Search, BookOpen // Updated Icons
+  ArrowLeftRight, Upload, CalendarCheck, Search, BookOpen
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -21,22 +22,30 @@ const NAV_ITEMS = [
   { path:'/maintenance', icon:Wrench,          label:'Maintenance' },
   { path:'/manpower',    icon:Users,           label:'Manpower' },
   { path:'/movement',    icon:ArrowLeftRight,  label:'Equipment Movement' },
-  { path:'/import',      icon:Upload,          label:'Bulk Import' },
+  { path:'/import',      icon:Upload,          label:'Bulk Import', adminOnly: true }, // Mark as admin-only
   { path:'/reports',     icon:FileBarChart,    label:'Reports & Export' },
-  { path:'/history',     icon:Search,          label:'Resource Explorer' }, // Changed
-  { path:'/help',        icon:BookOpen,        label:'User Guide' },      // Added
+  { path:'/history',     icon:Search,          label:'Resource Explorer' },
+  { path:'/help',        icon:BookOpen,        label:'User Guide' },
 ];
 
 const ROLE_INFO = {
-  admin:              { label:'Admin',       bg:'rgba(249,115,22,.18)', color:'#f97316', border:'rgba(249,115,22,.4)'  },
-  operations_manager: { label:'Ops Manager', bg:'rgba(59,130,246,.18)', color:'#3b82f6', border:'rgba(59,130,246,.4)'  },
-  maintenance:        { label:'Maintenance', bg:'rgba(245,158,11,.18)', color:'#f59e0b', border:'rgba(245,158,11,.4)'  },
-  technician:         { label:'Technician',  bg:'rgba(34,197,94,.18)',  color:'#22c55e', border:'rgba(34,197,94,.4)'   },
-  executive:          { label:'Executive',   bg:'rgba(168,85,247,.18)', color:'#a855f7', border:'rgba(168,85,247,.4)'  },
+  admin:        { label:'Admin',         bg:'rgba(239, 68, 68, 0.1)', color:'#ef4444', border:'rgba(239, 68, 68, 0.4)' },
+  base_manager: { label:'Base Manager',  bg:'rgba(59, 130, 246, 0.1)', color:'#3b82f6', border:'rgba(59, 130, 246, 0.4)' },
+  user:         { label:'User',          bg:'rgba(34, 197, 94, 0.1)',  color:'#22c55e', border:'rgba(34, 197, 94, 0.4)'  },
 };
 
 function SidebarContent({ open, user, userRole, onClose, onLogout }) {
-  const role = ROLE_INFO[userRole] || ROLE_INFO.technician;
+  const role = ROLE_INFO[userRole] || ROLE_INFO.user; // Default to user role info
+
+  const visibleNavItems = useMemo(() => {
+    return NAV_ITEMS.filter(item => {
+      if (item.adminOnly) {
+        return userRole === 'admin';
+      }
+      return true;
+    });
+  }, [userRole]);
+
   return (
     <div className="flex flex-col h-full" style={{background:'var(--t-bg2)'}}>
       {/* Logo */}
@@ -54,7 +63,7 @@ function SidebarContent({ open, user, userRole, onClose, onLogout }) {
 
       {/* Nav */}
       <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-        {NAV_ITEMS.map(({ path, icon:Icon, label, hot }) => (
+        {visibleNavItems.map(({ path, icon:Icon, label, hot }) => (
           <NavLink key={path} to={path} onClick={onClose}
             className={({ isActive }) => clsx('sidebar-item', isActive && 'active')}>
             {({ isActive }) => (
@@ -111,7 +120,7 @@ export default function Layout() {
   const { user, userRole, logout } = useAuth();
   const { theme, toggle: toggleTheme } = useTheme();
   const navigate = useNavigate();
-  const role = ROLE_INFO[userRole] || ROLE_INFO.technician;
+  const role = ROLE_INFO[userRole] || ROLE_INFO.user; // Default to user role info
 
   const handleLogout = async () => {
     await logout();

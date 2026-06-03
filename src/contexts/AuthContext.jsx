@@ -1,3 +1,4 @@
+
 import { createContext, useContext, useState, useEffect } from 'react';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
@@ -6,29 +7,31 @@ import { auth, db } from '../firebase';
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user,    setUser]   = useState(null);
-  const [userRole,setRole]   = useState(null);
-  const [loading, setLoading]= useState(true);
+  const [user, setUser] = useState(null);
+  const [userRole, setRole] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
-
-      console.log('AUTH CHANGED', fbUser?.email);
-      
       if (fbUser) {
         try {
-          const snap = await getDoc(doc(db, 'users', fbUser.uid));
-          const data = snap.exists() ? snap.data() : {};
+          const userDocRef = doc(db, 'users', fbUser.uid);
+          const docSnap = await getDoc(userDocRef);
+          const userData = docSnap.exists() ? docSnap.data() : {};
+          
           setUser({
-            uid:         fbUser.uid,
-            email:       fbUser.email,
-            displayName: data.name || fbUser.email,
+            uid: fbUser.uid,
+            email: fbUser.email,
+            displayName: userData.name || fbUser.email,
           });
-          setRole(data.role || 'technician');
+
+          // Set user role based on Firestore data, default to 'user'
+          setRole(userData.role || 'user');
         } catch (err) {
-          console.error('Role fetch error:', err);
+          console.error('Auth context error:', err);
+          // Fallback for safety
           setUser({ uid: fbUser.uid, email: fbUser.email, displayName: fbUser.email });
-          setRole('technician');
+          setRole('user');
         }
       } else {
         setUser(null);
@@ -48,9 +51,21 @@ export function AuthProvider({ children }) {
     await signOut(auth);
   };
 
+  const value = {
+    user,
+    userRole,
+    loading,
+    login,
+    logout,
+    isAdmin: userRole === 'admin',
+    isBaseManager: userRole === 'base_manager',
+    isUser: userRole === 'user',
+    isDemoMode: false, // Assuming isDemoMode is a constant false for now
+  };
+
   return (
-    <AuthContext.Provider value={{ user, userRole, loading, isDemoMode: false, login, logout }}>
-      {children}
+    <AuthContext.Provider value={value}>
+      {!loading && children}
     </AuthContext.Provider>
   );
 }

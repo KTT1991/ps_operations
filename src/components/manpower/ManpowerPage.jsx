@@ -1,14 +1,14 @@
+
 import { useState, useEffect } from 'react';
 import { Users, Plus, Search, Download, AlertTriangle, X, Trash2, History, Briefcase, Coffee, Wrench, BadgeCheck, UserCheck, Edit, MapPin } from 'lucide-react';
-import { employeesService, projectsService, manpowerHistoryService } from '../../services/firebaseService'; // Import manpowerHistoryService
-import { useAuth } from '../../contexts/AuthContext'; // Import useAuth
+import { employeesService, projectsService, manpowerHistoryService } from '../../services/firebaseService';
+import { useAuth } from '../../contexts/AuthContext';
 import { exportManpowerToExcel } from '../../utils/exportUtils';
 import { differenceInDays, parseISO, format, isAfter, isBefore } from 'date-fns';
-import { isEqual } from 'lodash'; // Using lodash for deep comparison
+import { isEqual } from 'lodash';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 
-// ... (Keep existing constants)
 const AVAILABILITY_CONFIG = {
   Available:  { color:'text-green-400',  bg:'bg-green-900/30 border-green-700/50',  dot:'bg-green-500' },
   Assigned:   { color:'text-blue-400',   bg:'bg-blue-900/30 border-blue-700/50',    dot:'bg-blue-500' },
@@ -26,7 +26,7 @@ const LOCATION_OPTIONS = ['Onshore', 'Offshore', 'Yard', 'Home', 'Training Cente
 const DEFAULT_CERTS = ['BOSIET', 'H2S Safety', 'Medical', 'Offshore Survival', 'CompEx', 'CSWIP', 'PMP'];
 
 function EmployeeModal({ employee, projects, onClose, onSave }) {
-  const { user } = useAuth(); // Get user from auth context
+  const { user, isAdmin } = useAuth(); // Get user and isAdmin flag
   const [form, setForm] = useState(employee || {
     name:'', position:'', department:'', email:'', phone:'',
     availability:'Available', utilization:0,
@@ -92,6 +92,7 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
   };
 
   const saveEmployee = async () => {
+    if (!isAdmin) return toast.error("You don't have permission to save.");
     if (!form.name || !form.position) return toast.error('Name and position are required.');
     setSaving(true);
     try {
@@ -99,7 +100,6 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
         let docId = employee?.id;
 
         if (docId) {
-            // Update existing employee
             const changes = getChanges(employee, finalData, certs);
             if (changes.length > 0) {
               await employeesService.update(docId, finalData);
@@ -116,9 +116,8 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
               toast.success('No changes to save.');
             }
         } else {
-            // Create new employee
             const newEmployee = await employeesService.create(finalData);
-            docId = newEmployee.id; // Get the new ID
+            docId = newEmployee.id;
             await manpowerHistoryService.create({
               refId: docId,
               refNo: finalData.name,
@@ -139,6 +138,7 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
   };
 
   const deleteEmployee = async () => {
+    if (!isAdmin) return toast.error("You don't have permission to delete.");
     if (!employee?.id || !confirm('Are you sure you want to delete this employee?')) return;
     try {
         await employeesService.delete(employee.id);
@@ -155,7 +155,6 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
     } catch (e) { toast.error('Failed to delete.'); console.error(e); }
   }
 
-    // ... (The rest of the EmployeeModal JSX remains the same)
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={e => e.target===e.currentTarget && onClose()}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
@@ -165,148 +164,150 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
               <button onClick={onClose} className="btn-ghost p-1"><X className="w-4 h-4" /></button>
           </div>
           <div className="p-5 space-y-6">
-               <div>
-                  <h3 className="text-xs font-semibold text-[var(--t-text3)] uppercase mb-3">Basic Information</h3>
-                  <div className="grid grid-cols-2 gap-3">
-                      <div>
-                           <label className="text-xs block mb-1 text-[var(--t-text3)]">Full Name *</label>
-                           <input name="name" value={form.name} onChange={handleFormChange} className="input-field" />
-                      </div>
-                      <div>
-                           <label className="text-xs block mb-1 text-[var(--t-text3)]">Position *</label>
-                           <input name="position" value={form.position} onChange={handleFormChange} className="input-field" />
-                      </div>
-                      <div className="col-span-2">
-                           <label className="text-xs block mb-1 text-[var(--t-text3)]">Department</label>
-                           <input name="department" value={form.department} onChange={handleFormChange} className="input-field" />
-                      </div>
-                  </div>
-              </div>
-
-               <div>
-                  <h3 className="text-xs font-semibold text-[var(--t-text3)] uppercase mb-3">Status & Certifications</h3>
-                  <div className="space-y-3">
+              {/* Form content is the same, but read-only if not admin */}
+              <fieldset disabled={!isAdmin} className="contents">
+                  <div>
+                      <h3 className="text-xs font-semibold text-[var(--t-text3)] uppercase mb-3">Basic Information</h3>
                       <div className="grid grid-cols-2 gap-3">
                           <div>
-                              <label className="text-xs block mb-1 text-[var(--t-text3)]">Availability</label>
-                              <select name="availability" value={form.availability} onChange={handleFormChange} className="select-field">
-                                  {Object.keys(AVAILABILITY_CONFIG).map(s => <option key={s}>{s}</option>)}
-                              </select>
+                               <label className="text-xs block mb-1 text-[var(--t-text3)]">Full Name *</label>
+                               <input name="name" value={form.name} onChange={handleFormChange} className="input-field" />
                           </div>
-                          <div />
+                          <div>
+                               <label className="text-xs block mb-1 text-[var(--t-text3)]">Position *</label>
+                               <input name="position" value={form.position} onChange={handleFormChange} className="input-field" />
+                          </div>
+                          <div className="col-span-2">
+                               <label className="text-xs block mb-1 text-[var(--t-text3)]">Department</label>
+                               <input name="department" value={form.department} onChange={handleFormChange} className="input-field" />
+                          </div>
                       </div>
+                  </div>
 
-                      <div className="flex flex-wrap gap-1.5 mb-2">
-                         {DEFAULT_CERTS.filter(dc => !certs.find(c => c.label === dc)).map(dc => 
-                           <button key={dc} onClick={() => addCert(dc)} className="btn-action text-xs">+ {dc}</button>
-                         )}
-                      </div>
-                      
-                      <div className="flex gap-2 mb-3">
-                           <input value={newCertLabel} onChange={e => setNewCertLabel(e.target.value)} onKeyDown={e => e.key === 'Enter' && addCert(newCertLabel)} placeholder="Or add custom cert..." className="input-field text-sm flex-1" />
-                           <button onClick={() => addCert(newCertLabel)} className="btn-secondary text-xs">Add</button>
-                      </div>
+                   <div>
+                      <h3 className="text-xs font-semibold text-[var(--t-text3)] uppercase mb-3">Status & Certifications</h3>
+                      <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                  <label className="text-xs block mb-1 text-[var(--t-text3)]">Availability</label>
+                                  <select name="availability" value={form.availability} onChange={handleFormChange} className="select-field">
+                                      {Object.keys(AVAILABILITY_CONFIG).map(s => <option key={s}>{s}</option>)}
+                                  </select>
+                              </div>
+                              <div />
+                          </div>
 
+                          <div className="flex flex-wrap gap-1.5 mb-2">
+                             {DEFAULT_CERTS.filter(dc => !certs.find(c => c.label === dc)).map(dc => 
+                               <button key={dc} onClick={() => addCert(dc)} className="btn-action text-xs">+ {dc}</button>
+                             )}
+                          </div>
+                          
+                          <div className="flex gap-2 mb-3">
+                               <input value={newCertLabel} onChange={e => setNewCertLabel(e.target.value)} onKeyDown={e => e.key === 'Enter' && addCert(newCertLabel)} placeholder="Or add custom cert..." className="input-field text-sm flex-1" />
+                               <button onClick={() => addCert(newCertLabel)} className="btn-secondary text-xs">Add</button>
+                          </div>
+
+                          <div className="space-y-2">
+                              {certs.map((c, i) => (
+                                  <div key={i} className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center">
+                                      <div className="text-xs font-medium text-[var(--t-text2)]">{c.label}</div>
+                                      <input type="date" value={c.expiry || ''} onChange={e => updateCert(i, 'expiry', e.target.value)} className="input-field text-sm" />
+                                      <input value={c.certNo || ''} onChange={e => updateCert(i, 'certNo', e.target.value)} placeholder="Cert No." className="input-field text-sm" />
+                                      <button type="button" onClick={() => setCerts(certs.filter((_, idx) => idx !== i))} className="btn-ghost p-1 text-red-400"><X className="w-3.5 h-3.5"/></button>
+                                  </div>
+                              ))}
+                          </div>
+                      </div>
+                  </div>
+
+                   <div>
+                      <h3 className="text-xs font-semibold text-[var(--t-text3)] uppercase mb-3">Schedule History</h3>
                       <div className="space-y-2">
-                          {certs.map((c, i) => (
-                              <div key={i} className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center">
-                                  <div className="text-xs font-medium text-[var(--t-text2)]">{c.label}</div>
-                                  <input type="date" value={c.expiry || ''} onChange={e => updateCert(i, 'expiry', e.target.value)} className="input-field text-sm" />
-                                  <input value={c.certNo || ''} onChange={e => updateCert(i, 'certNo', e.target.value)} placeholder="Cert No." className="input-field text-sm" />
-                                  <button type="button" onClick={() => setCerts(certs.filter((_, idx) => idx !== i))} className="btn-ghost p-1 text-red-400"><X className="w-3.5 h-3.5"/></button>
-                              </div>
-                          ))}
-                      </div>
-                  </div>
-              </div>
-
-               <div>
-                  <h3 className="text-xs font-semibold text-[var(--t-text3)] uppercase mb-3">Schedule History</h3>
-                  <div className="space-y-2">
-                       <div className="max-h-48 overflow-y-auto space-y-2 pr-2">
-                          {(form.schedule || []).map((s, i) => {
-                              const detailText = s.projectNo ? `${s.projectNo} - ${s.projectName}` : (s.projectName || s.details);
-                              return (
-                                  <div key={i} className="flex items-start gap-3 p-2 rounded-lg bg-[var(--t-bg3)]">
-                                    <button type="button" onClick={() => setForm(f => ({...f, schedule: f.schedule.filter((_,idx)=>idx!==i)}))} className="btn-ghost p-1 text-red-400 mt-0.5"><X className="w-3.5 h-3.5"/></button>
-                                      <div className="flex-1">
-                                          <div className="flex items-center justify-between">
-                                              <div className={clsx('text-xs font-semibold', SCHEDULE_TYPE_CONFIG[s.type]?.color)}>{s.type}</div>
-                                              <div className="text-xs text-cyan-400 flex items-center gap-1"><MapPin className="w-3 h-3" />{s.location}</div>
+                           <div className="max-h-48 overflow-y-auto space-y-2 pr-2">
+                              {(form.schedule || []).map((s, i) => {
+                                  const detailText = s.projectNo ? `${s.projectNo} - ${s.projectName}` : (s.projectName || s.details);
+                                  return (
+                                      <div key={i} className="flex items-start gap-3 p-2 rounded-lg bg-[var(--t-bg3)]">
+                                        <button type="button" onClick={() => setForm(f => ({...f, schedule: f.schedule.filter((_,idx)=>idx!==i)}))} className="btn-ghost p-1 text-red-400 mt-0.5"><X className="w-3.5 h-3.5"/></button>
+                                          <div className="flex-1">
+                                              <div className="flex items-center justify-between">
+                                                  <div className={clsx('text-xs font-semibold', SCHEDULE_TYPE_CONFIG[s.type]?.color)}>{s.type}</div>
+                                                  <div className="text-xs text-cyan-400 flex items-center gap-1"><MapPin className="w-3 h-3" />{s.location}</div>
+                                              </div>
+                                              <div className="font-medium text-xs mt-0.5">{detailText}</div>
+                                              {s.details && <p className="text-xs text-gray-400 mt-0.5">{s.details}</p>}
+                                              <div className="font-mono text-xs text-[var(--t-text3)] mt-1">{s.startDate}{s.endDate && ` → ${s.endDate}`}</div>
                                           </div>
-                                          <div className="font-medium text-xs mt-0.5">{detailText}</div>
-                                          {s.details && <p className="text-xs text-gray-400 mt-0.5">{s.details}</p>}
-                                          <div className="font-mono text-xs text-[var(--t-text3)] mt-1">{s.startDate}{s.endDate && ` → ${s.endDate}`}</div>
                                       </div>
+                                  );
+                              })}
+                          </div>
+                           <div className="grid grid-cols-2 gap-y-2 gap-x-3 p-3 border rounded-lg">
+                               <div className="col-span-2">
+                                   <label className="text-xs block mb-1 text-[var(--t-text3)]">Type</label>
+                                   <select value={newEntry.type} onChange={e => setNewEntry({...newEntry, type: e.target.value, projectId: ''})} className="select-field text-sm">
+                                       {Object.keys(SCHEDULE_TYPE_CONFIG).map(t => <option key={t}>{t}</option>)}
+                                   </select>
+                               </div>
+
+                              {newEntry.type === 'Assignment' ? (
+                                  <>
+                                      <div className="col-span-2">
+                                          <label className="text-xs block mb-1 text-[var(--t-text3)]">Project *</label>
+                                          <select value={newEntry.projectId} onChange={e => setNewEntry({...newEntry, projectId: e.target.value})} className="select-field text-sm">
+                                              <option value="">Select Project</option>
+                                              {projects.map(p => <option key={p.id} value={p.id}>{p.projectNo ? `${p.projectNo} - ${p.name}` : p.name}</option>)}
+                                          </select>
+                                      </div>
+                                      <div className="col-span-2">
+                                          <label className="text-xs block mb-1 text-[var(--t-text3)]">Notes / Role</label>
+                                          <input value={newEntry.details} onChange={e => setNewEntry({...newEntry, details: e.target.value})} placeholder="e.g., Onshore Supervisor" className="input-field text-sm" />
+                                      </div>
+                                  </>
+                              ) : (
+                                  <div className="col-span-2">
+                                       <label className="text-xs block mb-1 text-[var(--t-text3)]">Details</label>
+                                       <input value={newEntry.details} onChange={e => setNewEntry({...newEntry, details: e.target.value})} placeholder="e.g., Annual Leave" className="input-field text-sm" />
                                   </div>
-                              );
-                          })}
+                              )}
+                               
+                               <div className="col-span-2">
+                                   <label className="text-xs block mb-1 text-[var(--t-text3)]">Location</label>
+                                   <select value={newEntry.location} onChange={e => setNewEntry({...newEntry, location: e.target.value})} className="select-field text-sm">
+                                       {LOCATION_OPTIONS.map(l => <option key={l}>{l}</option>)}
+                                   </select>
+                               </div>
+
+                               <div>
+                                   <label className="text-xs block mb-1 text-[var(--t-text3)]">Start Date</label>
+                                   <input type="date" value={newEntry.startDate} onChange={e => setNewEntry({...newEntry, startDate: e.target.value})} className="input-field text-sm" />
+                               </div>
+                               <div>
+                                   <label className="text-xs block mb-1 text-[var(--t-text3)]">End Date</label>
+                                   <input type="date" value={newEntry.endDate} onChange={e => setNewEntry({...newEntry, endDate: e.target.value})} className="input-field text-sm" />
+                               </div>
+                               <div className="col-span-2 mt-1">
+                                   <button onClick={addScheduleEntry} className="btn-secondary w-full text-xs">Add to Schedule</button>
+                               </div>
+                           </div>
                       </div>
-                       <div className="grid grid-cols-2 gap-y-2 gap-x-3 p-3 border rounded-lg">
-                           <div className="col-span-2">
-                               <label className="text-xs block mb-1 text-[var(--t-text3)]">Type</label>
-                               <select value={newEntry.type} onChange={e => setNewEntry({...newEntry, type: e.target.value, projectId: ''})} className="select-field text-sm">
-                                   {Object.keys(SCHEDULE_TYPE_CONFIG).map(t => <option key={t}>{t}</option>)}
-                               </select>
-                           </div>
-
-                          {newEntry.type === 'Assignment' ? (
-                              <>
-                                  <div className="col-span-2">
-                                      <label className="text-xs block mb-1 text-[var(--t-text3)]">Project *</label>
-                                      <select value={newEntry.projectId} onChange={e => setNewEntry({...newEntry, projectId: e.target.value})} className="select-field text-sm">
-                                          <option value="">Select Project</option>
-                                          {projects.map(p => <option key={p.id} value={p.id}>{p.projectNo ? `${p.projectNo} - ${p.name}` : p.name}</option>)}
-                                      </select>
-                                  </div>
-                                  <div className="col-span-2">
-                                      <label className="text-xs block mb-1 text-[var(--t-text3)]">Notes / Role</label>
-                                      <input value={newEntry.details} onChange={e => setNewEntry({...newEntry, details: e.target.value})} placeholder="e.g., Onshore Supervisor" className="input-field text-sm" />
-                                  </div>
-                              </>
-                          ) : (
-                              <div className="col-span-2">
-                                   <label className="text-xs block mb-1 text-[var(--t-text3)]">Details</label>
-                                   <input value={newEntry.details} onChange={e => setNewEntry({...newEntry, details: e.target.value})} placeholder="e.g., Annual Leave" className="input-field text-sm" />
-                              </div>
-                          )}
-                           
-                           <div className="col-span-2">
-                               <label className="text-xs block mb-1 text-[var(--t-text3)]">Location</label>
-                               <select value={newEntry.location} onChange={e => setNewEntry({...newEntry, location: e.target.value})} className="select-field text-sm">
-                                   {LOCATION_OPTIONS.map(l => <option key={l}>{l}</option>)}
-                               </select>
-                           </div>
-
-                           <div>
-                               <label className="text-xs block mb-1 text-[var(--t-text3)]">Start Date</label>
-                               <input type="date" value={newEntry.startDate} onChange={e => setNewEntry({...newEntry, startDate: e.target.value})} className="input-field text-sm" />
-                           </div>
-                           <div>
-                               <label className="text-xs block mb-1 text-[var(--t-text3)]">End Date</label>
-                               <input type="date" value={newEntry.endDate} onChange={e => setNewEntry({...newEntry, endDate: e.target.value})} className="input-field text-sm" />
-                           </div>
-                           <div className="col-span-2 mt-1">
-                               <button onClick={addScheduleEntry} className="btn-secondary w-full text-xs">Add to Schedule</button>
-                           </div>
-                       </div>
                   </div>
+              </fieldset>
+          </div>
+          {isAdmin && (
+            <div className="sticky bottom-0 modal-bg border-t px-5 py-4 flex items-center justify-between">
+              <div>{employee && <button onClick={deleteEmployee} className="btn-danger text-xs"><Trash2 className="w-4 h-4"/>Delete</button>}</div>
+              <div className="flex gap-2">
+                  <button onClick={onClose} className="btn-secondary">Cancel</button>
+                  <button onClick={saveEmployee} disabled={saving} className="btn-primary">{saving ? 'Saving...' : 'Save Employee'}</button>
               </div>
-          </div>
-          <div className="sticky bottom-0 modal-bg border-t px-5 py-4 flex items-center justify-between">
-            <div>{employee && <button onClick={deleteEmployee} className="btn-danger text-xs"><Trash2 className="w-4 h-4"/>Delete</button>}</div>
-            <div className="flex gap-2">
-                <button onClick={onClose} className="btn-secondary">Cancel</button>
-                <button onClick={saveEmployee} disabled={saving} className="btn-primary">{saving ? 'Saving...' : 'Save Employee'}</button>
             </div>
-          </div>
+          )}
       </div>
     </div>
   );
 }
-
-// ... (The rest of the file, BulkScheduleModal, EmployeeCard, ManpowerPage, etc. remains the same)
-
 
 function BulkScheduleModal({ selectedEmpIds, employees, onClose, onSave, projects }) {
     const [newEntry, setNewEntry] = useState({
@@ -434,13 +435,22 @@ function BulkScheduleModal({ selectedEmpIds, employees, onClose, onSave, project
 }
 
 function EmployeeCard({ emp, onClick, onSelect, selectionMode, isSelected }) {
+  const { isAdmin } = useAuth();
   const cfg = AVAILABILITY_CONFIG[emp.availability] || AVAILABILITY_CONFIG.Available;
   const hasCritical = (emp.certFields || []).some(c => c.expiry && differenceInDays(parseISO(c.expiry), new Date()) < 30);
 
+  const handleClick = () => {
+    if (selectionMode) {
+        onSelect(emp.id);
+    } else if (isAdmin) {
+        onClick(); // Only allow opening the modal if admin
+    }
+  };
+
   return (
-    <div onClick={() => selectionMode ? onSelect(emp.id) : onClick()} 
-        className={clsx("card p-4 space-y-3 transition-all cursor-pointer relative",
-            isSelected ? 'border-orange-500 ring-2 ring-orange-500/50' : 'hover:border-slate-600'
+    <div onClick={handleClick} 
+        className={clsx("card p-4 space-y-3 transition-all relative",
+            isSelected ? 'border-orange-500 ring-2 ring-orange-500/50' : (isAdmin ? 'hover:border-slate-600 cursor-pointer' : 'cursor-default')
         )}>
         {selectionMode && <div className='absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center bg-orange-500 text-white'><UserCheck className='w-3 h-3'/></div>}
         <div className="flex items-start justify-between gap-2">
@@ -462,13 +472,13 @@ function EmployeeCard({ emp, onClick, onSelect, selectionMode, isSelected }) {
         </div>
          <div className="flex items-center justify-between text-xs text-[var(--t-text3)]">
             <span>{emp.department}</span>
-            {/* Rotation removed from here */}
         </div>
     </div>
   );
 }
 
 export default function ManpowerPage() {
+  const { isAdmin } = useAuth(); // Get isAdmin flag
   const [employees, setEmployees] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -524,12 +534,13 @@ export default function ManpowerPage() {
                 <>
                     <button onClick={() => exportManpowerToExcel(employees)} className="btn-secondary text-xs"><Download className="w-4 h-4" />Excel</button>
                     <button onClick={() => setSelectionMode(true)} className="btn-secondary text-xs"><UserCheck className="w-4 h--4"/>Bulk Update</button>
-                    <button onClick={()=>{setEditModal({isOpen:true, employee:null});}} className="btn-primary"><Plus className="w-4 h-4" />Add Employee</button>
+                    {isAdmin && <button onClick={()=>{setEditModal({isOpen:true, employee:null});}} className="btn-primary"><Plus className="w-4 h-4" />Add Employee</button>}
                 </>
             )}
         </div>
       </div>
 
+      {/* KPI Cards and Search remain the same */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
          {Object.entries(AVAILABILITY_CONFIG).map(([status, cfg]) => (
           <button key={status} onClick={()=>setAvailFilter(availFilter===status?'All':status)}
