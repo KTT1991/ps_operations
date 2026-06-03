@@ -287,7 +287,7 @@ export default function AssetsPage() {
                   <tr key={asset.id}>
                     <td><span className="font-mono text-xs text-[var(--t-text3)]">{asset.assetNo || asset.id}</span></td>
                     <td>
-                      <div className="font-medium text-sm max-w-[200px] truncate">{asset.name}</div>
+                      <div className="font-medium text-xs max-w-[200px] truncate">{asset.name}</div>
                       {asset.serialNumber&&<div className="text-xs text-[var(--t-text3)] font-mono">{asset.serialNumber}</div>}
                     </td>
                     <td><span className="text-xs text-[var(--t-text3)]">{asset.category||asset.type}</span></td>

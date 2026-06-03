@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Users, Plus, Search, Download, AlertTriangle, X, Trash2, History, Briefcase, Coffee, Wrench, BadgeCheck, UserCheck, Edit, MapPin } from 'lucide-react';
-import { employeesService, projectsService } from '../../services/firebaseService';
+import { employeesService, projectsService, manpowerHistoryService } from '../../services/firebaseService'; // Import manpowerHistoryService
+import { useAuth } from '../../contexts/AuthContext'; // Import useAuth
 import { exportManpowerToExcel } from '../../utils/exportUtils';
 import { differenceInDays, parseISO, format, isAfter, isBefore } from 'date-fns';
+import { isEqual } from 'lodash'; // Using lodash for deep comparison
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 
+// ... (Keep existing constants)
 const AVAILABILITY_CONFIG = {
   Available:  { color:'text-green-400',  bg:'bg-green-900/30 border-green-700/50',  dot:'bg-green-500' },
   Assigned:   { color:'text-blue-400',   bg:'bg-blue-900/30 border-blue-700/50',    dot:'bg-blue-500' },
@@ -13,19 +16,17 @@ const AVAILABILITY_CONFIG = {
   Offshore:   { color:'text-cyan-400',   bg:'bg-cyan-900/30 border-cyan-700/50',    dot:'bg-cyan-500' },
   Training:   { color:'text-purple-400', bg:'bg-purple-900/30 border-purple-700/50',dot:'bg-purple-500' },
 };
-
 const SCHEDULE_TYPE_CONFIG = {
     Assignment: { icon: Briefcase, color: 'text-blue-400' },
     Leave: { icon: Coffee, color: 'text-amber-400' },
     Training: { icon: Users, color: 'text-purple-400' },
     'Standby / Maintenance': { icon: Wrench, color: 'text-slate-400' },
 };
-
 const LOCATION_OPTIONS = ['Onshore', 'Offshore', 'Yard', 'Home', 'Training Center', 'Other'];
-
 const DEFAULT_CERTS = ['BOSIET', 'H2S Safety', 'Medical', 'Offshore Survival', 'CompEx', 'CSWIP', 'PMP'];
 
 function EmployeeModal({ employee, projects, onClose, onSave }) {
+  const { user } = useAuth(); // Get user from auth context
   const [form, setForm] = useState(employee || {
     name:'', position:'', department:'', email:'', phone:'',
     availability:'Available', utilization:0,
@@ -35,7 +36,6 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
   const [certs, setCerts] = useState(employee?.certFields || []);
   const [newCertLabel, setNewCertLabel] = useState('');
   const [saving, setSaving] = useState(false);
-  
   const [newEntry, setNewEntry] = useState({
       type: 'Assignment',
       projectId: '',
@@ -61,7 +61,6 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
         toast.error("Please select a project and a start date.");
         return;
     }
-    
     let entryToAdd = { ...newEntry };
     if (newEntry.type === 'Assignment') {
         const selectedProject = projects.find(p => p.id === newEntry.projectId);
@@ -70,27 +69,72 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
             entryToAdd.projectName = selectedProject.name;
         }
     }
-
-    const updatedSchedule = [...(form.schedule || []), entryToAdd]
-        .sort((a, b) => isAfter(parseISO(a.startDate), parseISO(b.startDate)) ? -1 : 1);
-    
+    const updatedSchedule = [...(form.schedule || []), entryToAdd].sort((a, b) => isAfter(parseISO(a.startDate), parseISO(b.startDate)) ? -1 : 1);
     setForm(f => ({ ...f, schedule: updatedSchedule }));
     setNewEntry({ type: 'Assignment', projectId: '', details: '', location:'Onshore', startDate: format(new Date(), 'yyyy-MM-dd'), endDate: '' });
   }
+
+  const getChanges = (original, updated, updatedCerts) => {
+    const changes = [];
+    const simpleFields = ['name', 'position', 'department', 'availability'];
+    simpleFields.forEach(field => {
+      if (original[field] !== updated[field]) {
+        changes.push({ field, oldValue: original[field] || 'N/A', newValue: updated[field] });
+      }
+    });
+    if (!isEqual(original.certFields, updatedCerts)) {
+      changes.push({ field: 'certifications', oldValue: 'See previous record', newValue: 'Updated' });
+    }
+    if (!isEqual(original.schedule, updated.schedule)) {
+      changes.push({ field: 'schedule', oldValue: 'See previous record', newValue: 'Updated' });
+    }
+    return changes;
+  };
 
   const saveEmployee = async () => {
     if (!form.name || !form.position) return toast.error('Name and position are required.');
     setSaving(true);
     try {
-        if (employee?.id) {
-            await employeesService.update(employee.id, {...form, certFields: certs});
-            toast.success('Employee updated!');
+        const finalData = { ...form, certFields: certs };
+        let docId = employee?.id;
+
+        if (docId) {
+            // Update existing employee
+            const changes = getChanges(employee, finalData, certs);
+            if (changes.length > 0) {
+              await employeesService.update(docId, finalData);
+              await manpowerHistoryService.create({
+                refId: docId,
+                refNo: finalData.name,
+                activityType: 'Update Profile',
+                timestamp: new Date(),
+                modifiedBy: user?.displayName || user?.email || 'System',
+                changes: changes,
+              });
+              toast.success('Employee updated!');
+            } else {
+              toast.success('No changes to save.');
+            }
         } else {
-            await employeesService.create({...form, certFields: certs});
+            // Create new employee
+            const newEmployee = await employeesService.create(finalData);
+            docId = newEmployee.id; // Get the new ID
+            await manpowerHistoryService.create({
+              refId: docId,
+              refNo: finalData.name,
+              activityType: 'Create Profile',
+              timestamp: new Date(),
+              modifiedBy: user?.displayName || user?.email || 'System',
+              changes: [{ field: 'profile', oldValue: 'N/A', newValue: 'Created' }],
+            });
             toast.success('Employee added!');
         }
-        onSave(); onClose();
-    } catch (e) { toast.error('Failed to save.'); console.error(e); }
+        onSave(); 
+        onClose();
+    } catch (e) { 
+        toast.error('Failed to save.'); 
+        console.error(e); 
+    }
     finally { setSaving(false); }
   };
 
@@ -98,11 +142,20 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
     if (!employee?.id || !confirm('Are you sure you want to delete this employee?')) return;
     try {
         await employeesService.delete(employee.id);
+        await manpowerHistoryService.create({
+            refId: employee.id,
+            refNo: employee.name,
+            activityType: 'Delete Profile',
+            timestamp: new Date(),
+            modifiedBy: user?.displayName || user?.email || 'System',
+            changes: [{ field: 'profile', oldValue: 'Active', newValue: 'Deleted' }],
+        });
         toast.success('Employee deleted.');
         onSave(); onClose();
     } catch (e) { toast.error('Failed to delete.'); console.error(e); }
   }
 
+    // ... (The rest of the EmployeeModal JSX remains the same)
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={e => e.target===e.currentTarget && onClose()}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
@@ -251,6 +304,9 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
     </div>
   );
 }
+
+// ... (The rest of the file, BulkScheduleModal, EmployeeCard, ManpowerPage, etc. remains the same)
+
 
 function BulkScheduleModal({ selectedEmpIds, employees, onClose, onSave, projects }) {
     const [newEntry, setNewEntry] = useState({

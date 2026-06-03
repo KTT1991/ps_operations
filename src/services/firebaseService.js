@@ -4,13 +4,6 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 
-// ✅ แก้ bug — function ถูกต้องแล้ว
-const isFirebaseConfigured = () =>
-  Boolean(
-    import.meta.env.VITE_FIREBASE_API_KEY &&
-    import.meta.env.VITE_FIREBASE_API_KEY !== 'demo-key'
-  );
-
 const createService = (collectionName) => ({
   async getAll() {
     const snap = await getDocs(collection(db, collectionName));
@@ -20,7 +13,6 @@ const createService = (collectionName) => ({
     const snap = await getDoc(doc(db, collectionName, id));
     return snap.exists() ? { id: snap.id, ...snap.data() } : null;
   },
-  // ✅ รองรับ Custom ID (ถ้าส่ง id มาด้วย ใช้ setDoc, ไม่ส่งใช้ addDoc)
   async create(data) {
     if (data.id) {
       await setDoc(doc(db, collectionName, data.id), {
@@ -55,13 +47,17 @@ const createService = (collectionName) => ({
   },
 });
 
-export const assetsService      = createService('assets');
-export const projectsService    = createService('projects');
-export const employeesService   = createService('employees');
+export const assetsService = createService('assets');
+export const projectsService = createService('projects');
+export const employeesService = createService('employees');
 export const maintenanceService = createService('maintenance');
-export const inventoryService   = createService('inventory');
+export const inventoryService = createService('inventory');
 
-// alerts ยังคงคำนวณ real-time จาก data ที่ดึงมา
+// New History Services
+export const equipmentHistoryService = createService('equipmentHistory');
+export const manpowerHistoryService = createService('manpowerHistory');
+
+// alerts and other functions remain the same
 export const getSystemAlerts = (assets = [], employees = []) => {
   const alerts = [];
   const today = new Date();

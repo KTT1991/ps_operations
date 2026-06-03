@@ -13,6 +13,8 @@ import OperationsPage from './components/operations/OperationsPage';
 import MovementPage from './components/operations/MovementPage';
 import ResourcePlanningPage from './components/planning/ResourcePlanningPage';
 import ReportsPage from './components/reports/ReportsPage';
+import HistoryPage from './components/history/HistoryPage';
+import HelpPage from './components/help/HelpPage'; // Import HelpPage
 
 // Prevent logged in user from accessing /login
 function PublicRoute({ children }) {
@@ -74,6 +76,8 @@ export default function App() {
         <Route path="movement"    element={<MovementPage/>}/>
         <Route path="planning"    element={<ResourcePlanningPage/>}/>
         <Route path="reports"     element={<ReportsPage/>}/>
+        <Route path="history"     element={<HistoryPage/>}/>
+        <Route path="help"        element={<HelpPage/>}/> {/* Add Help Route */}
       </Route>
 
       <Route path="*" element={<Navigate to="/dashboard" replace/>}/>
