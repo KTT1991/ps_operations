@@ -27,7 +27,7 @@ const createService = (collectionName) => ({
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-    return { id: ref.id, ...data };
+    return { id: ref.id, ...data };cg
   },
   async update(id, data) {
     await updateDoc(doc(db, collectionName, id), {
