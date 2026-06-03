@@ -14,7 +14,7 @@ import MovementPage from './components/operations/MovementPage';
 import ResourcePlanningPage from './components/planning/ResourcePlanningPage';
 import ReportsPage from './components/reports/ReportsPage';
 
-// ป้องกัน user ที่ login แล้วกลับมาหน้า /login
+// Prevent logged in user from accessing /login
 function PublicRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return null;
@@ -22,7 +22,7 @@ function PublicRoute({ children }) {
   return children;
 }
 
-// ป้องกัน route ที่ต้อง login ก่อนเข้าได้
+// Protect routes that require authentication
 function ProtectedRoute({ children }) {
   const { user, userRole, loading } = useAuth();
 

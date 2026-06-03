@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Wrench, Plus, Search, Download, Clock, CheckCircle, XCircle, Trash2, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { maintenanceService, assetsService, employeesService } from '../../services/firebaseService';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 
-// ── ประเภทงานหลัก ──────────────────────────────────────────────────────────
 const WORK_TYPES = [
   'Load Test', 'Visual Inspection (VS)', 'MPI',
   'UT (Ultrasonic)', 'Pressure Test', 'Hydrostatic Test (HT)',
@@ -24,13 +23,11 @@ const STATUS_STYLE = {
   'Cancelled':        { dot:'bg-slate-500',  text:'text-[var(--t-text3)]', Icon: XCircle },
 };
 
-// ── Pre-defined cert date labels — user can add more ──────────────────────
 const PRESET_CERT_FIELDS = [
   'Load Test Date', 'VS Date', 'MPI Date', 'HT Date',
   'UT Date', 'Pressure Test Date', 'Re-cert Date',
 ];
 
-// ── Modal ─────────────────────────────────────────────────────────────────
 function MaintenanceModal({ record, assets, employees, onClose, onSave }) {
   const [form, setForm] = useState(record ? { ...record } : {
     assetId: '', jobCardNo: '', workTypes: [],
@@ -39,14 +36,12 @@ function MaintenanceModal({ record, assets, employees, onClose, onSave }) {
     result: '', remarks: '', cost: '',
   });
 
-  // Certificate date fields — flexible
   const [certFields, setCertFields] = useState(record?.certFields || []);
   const [certInput, setCertInput] = useState('');
-
-  // Custom extra fields
   const [customFields, setCustomFields] = useState(record?.customFields || []);
-
   const [saving, setSaving] = useState(false);
+  
+  const selectedAsset = assets.find(a => a.id === form.assetId);
 
   const toggleWorkType = (t) =>
     setForm(f => ({
@@ -64,68 +59,73 @@ function MaintenanceModal({ record, assets, employees, onClose, onSave }) {
   };
 
   const save = async () => {
-    if (!form.assetId) { toast.error('เลือก Asset ก่อน'); return; }
+    if (!form.assetId) { toast.error('Please select an asset first.'); return; }
     setSaving(true);
     try {
       const data = { ...form, certFields, customFields };
       if (record?.id) {
         await maintenanceService.update(record.id, data);
-        toast.success('แก้ไขแล้ว');
+        toast.success('Updated successfully.');
       } else {
         await maintenanceService.create({ ...data, id: `MNT-${Date.now()}` });
-        toast.success('บันทึกแล้ว');
+        toast.success('Saved successfully.');
       }
       onSave(); onClose();
-    } catch { toast.error('บันทึกไม่สำเร็จ'); }
+    } catch { toast.error('Save failed.'); }
     finally { setSaving(false); }
   };
 
   const del = async () => {
-    if (!record?.id || !confirm('ลบรายการนี้?')) return;
+    if (!record?.id || !confirm('Delete this item?')) return;
     await maintenanceService.delete(record.id);
-    toast.success('ลบแล้ว'); onSave(); onClose();
+    toast.success('Deleted successfully.'); onSave(); onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative modal-bg border rounded-xl w-full max-w-2xl max-h-[92vh] overflow-y-auto animate-fade-in shadow-2xl">
+      <div className="relative modal-bg border rounded-xl w-full max-w-3xl max-h-[92vh] overflow-y-auto animate-fade-in shadow-2xl">
 
-        {/* Header */}
         <div className="sticky top-0 modal-bg z-10 flex items-center justify-between px-5 py-4 border-b border-[var(--t-border)]">
           <h2 className="font-semibold text-sm text-[var(--t-text)]">
-            {record ? 'แก้ไข Job Card' : 'เพิ่ม Job Card ใหม่'}
+            {record ? 'Edit Job Card' : 'Add New Job Card'}
           </h2>
           <button onClick={onClose} className="btn-ghost p-1"><X className="w-4 h-4" /></button>
         </div>
 
         <div className="p-5 space-y-5">
 
-          {/* ── Section 1: Job Info ── */}
           <div>
             <div className="text-xs font-semibold text-[var(--t-text3)] uppercase tracking-wider mb-3">
-              ข้อมูลงาน
+              Job Information
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-[var(--t-text3)] block mb-1">Asset *</label>
-                <select value={form.assetId} onChange={e => setForm({ ...form, assetId: e.target.value })} className="select-field">
-                  <option value="">เลือก Asset...</option>
-                  {assets.map(a => (
-                    <option key={a.id} value={a.id}>{a.id} — {a.name?.substring(0, 35)}</option>
-                  ))}
-                </select>
+              <div className="col-span-2 grid grid-cols-2 gap-3">
+                 <div>
+                    <label className="text-xs text-[var(--t-text3)] block mb-1">Asset No. *</label>
+                    <select value={form.assetId} onChange={e => setForm({ ...form, assetId: e.target.value })} className="select-field">
+                      <option value="">Select Asset...</option>
+                      {assets.map(a => (
+                        <option key={a.id} value={a.id}>{a.assetNo || a.id}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-[var(--t-text3)] block mb-1">Asset Name</label>
+                    <input readOnly disabled value={selectedAsset?.name || ''} className="input-field bg-[var(--t-bg3)]"/>
+                  </div>
               </div>
+             
               <div>
                 <label className="text-xs text-[var(--t-text3)] block mb-1">Job Card No.</label>
                 <input value={form.jobCardNo || ''} onChange={e => setForm({ ...form, jobCardNo: e.target.value })}
-                  className="input-field" placeholder="เช่น JC-2026-001" />
+                  className="input-field" placeholder="e.g., JC-2026-001" />
               </div>
               <div>
-                <label className="text-xs text-[var(--t-text3)] block mb-1">ช่างผู้รับผิดชอบ</label>
+                <label className="text-xs text-[var(--t-text3)] block mb-1">Assigned Technician</label>
                 <select value={form.technician || ''} onChange={e => setForm({ ...form, technician: e.target.value })} className="select-field">
-                  <option value="">เลือก...</option>
+                  <option value="">Select...</option>
                   {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
                 </select>
               </div>
@@ -136,20 +136,19 @@ function MaintenanceModal({ record, assets, employees, onClose, onSave }) {
                 </select>
               </div>
               <div>
-                <label className="text-xs text-[var(--t-text3)] block mb-1">วันเริ่ม</label>
-                <input type="date" value={form.startDate || ''} onChange={e => setForm({ ...form, startDate: e.target.value })} className="input-field" />
+                <label className="text-xs text-[var(--t-text3)] block mb-1">Start Date</label>
+                <input type="date" value={form.startDate ? format(parseISO(form.startDate), 'yyyy-MM-dd') : ''} onChange={e => setForm({ ...form, startDate: e.target.value })} className="input-field" />
               </div>
               <div>
-                <label className="text-xs text-[var(--t-text3)] block mb-1">วันเสร็จ</label>
-                <input type="date" value={form.endDate || ''} onChange={e => setForm({ ...form, endDate: e.target.value })} className="input-field" />
+                <label className="text-xs text-[var(--t-text3)] block mb-1">End Date</label>
+                <input type="date" value={form.endDate ? format(parseISO(form.endDate), 'yyyy-MM-dd') : ''} onChange={e => setForm({ ...form, endDate: e.target.value })} className="input-field" />
               </div>
             </div>
           </div>
 
-          {/* ── Section 2: Work Types ── */}
           <div>
             <div className="text-xs font-semibold text-[var(--t-text3)] uppercase tracking-wider mb-2">
-              ประเภทงานที่ต้องทำ (เลือกได้หลายอย่าง)
+              Work Types (multiple selection)
             </div>
             <div className="flex flex-wrap gap-2">
               {WORK_TYPES.map(t => {
@@ -169,18 +168,17 @@ function MaintenanceModal({ record, assets, employees, onClose, onSave }) {
             </div>
           </div>
 
-          {/* ── Section 3: Description & Result ── */}
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className="text-xs text-[var(--t-text3)] block mb-1">รายละเอียดงาน / สิ่งที่ต้องทำ</label>
+              <label className="text-xs text-[var(--t-text3)] block mb-1">Work Description / Scope</label>
               <textarea value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })}
                 rows={3} className="input-field resize-none"
-                placeholder="อธิบายงานที่ต้องทำ เช่น ทำ Load Test ตาม API 4F..." />
+                placeholder="Describe the work to be done, e.g., perform Load Test as per API 4F..." />
             </div>
             <div>
-              <label className="text-xs text-[var(--t-text3)] block mb-1">ผลการทดสอบ</label>
+              <label className="text-xs text-[var(--t-text3)] block mb-1">Test Result</label>
               <select value={form.result || ''} onChange={e => setForm({ ...form, result: e.target.value })} className="select-field">
-                <option value="">ยังไม่ระบุ</option>
+                <option value="">Not specified</option>
                 <option>Pass</option>
                 <option>Fail</option>
                 <option>Conditional Pass</option>
@@ -188,25 +186,23 @@ function MaintenanceModal({ record, assets, employees, onClose, onSave }) {
               </select>
             </div>
             <div>
-              <label className="text-xs text-[var(--t-text3)] block mb-1">ค่าใช้จ่าย (฿)</label>
+              <label className="text-xs text-[var(--t-text3)] block mb-1">Cost (฿)</label>
               <input type="number" value={form.cost || ''} onChange={e => setForm({ ...form, cost: e.target.value })} className="input-field" placeholder="0" />
             </div>
             <div className="col-span-2">
-              <label className="text-xs text-[var(--t-text3)] block mb-1">หมายเหตุ / สิ่งที่ติดขัด</label>
+              <label className="text-xs text-[var(--t-text3)] block mb-1">Remarks / Issues</label>
               <textarea value={form.remarks || ''} onChange={e => setForm({ ...form, remarks: e.target.value })}
                 rows={2} className="input-field resize-none"
-                placeholder="เช่น รอ Third Party Inspector, รออะไหล่จาก Vendor..." />
+                placeholder="e.g., waiting for Third Party Inspector, waiting for parts from vendor..." />
             </div>
           </div>
 
-          {/* ── Section 4: Certificate Dates ── */}
           <div className="border-t border-[var(--t-border)] pt-4">
             <div className="text-xs font-semibold text-[var(--t-text3)] uppercase tracking-wider mb-3">
-              วันที่ Certificate / ผลทดสอบ
-              <span className="ml-2 normal-case font-normal text-[var(--t-text3)]">เพิ่มได้ตามต้องการ</span>
+              Certificate / Test Dates
+              <span className="ml-2 normal-case font-normal text-[var(--t-text3)]">Add as needed</span>
             </div>
 
-            {/* Quick add preset buttons */}
             <div className="flex flex-wrap gap-1.5 mb-3">
               {PRESET_CERT_FIELDS.filter(p => !certFields.find(c => c.label === p)).map(p => (
                 <button key={p} type="button" onClick={() => addCertField(p)}
@@ -216,18 +212,16 @@ function MaintenanceModal({ record, assets, employees, onClose, onSave }) {
               ))}
             </div>
 
-            {/* Manual custom cert type */}
             <div className="flex gap-2 mb-3">
               <input value={certInput} onChange={e => setCertInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && addCertField(certInput)}
-                placeholder="เพิ่ม cert อื่นๆ เช่น Coating Inspection Date..."
+                placeholder="Add other certs, e.g., Coating Inspection Date..."
                 className="input-field flex-1 text-xs" />
-              <button type="button" onClick={() => addCertField(certInput)} className="btn-secondary text-xs px-3">+ เพิ่ม</button>
+              <button type="button" onClick={() => addCertField(certInput)} className="btn-secondary text-xs px-3">+ Add</button>
             </div>
 
-            {/* Cert fields list */}
             {certFields.length === 0 && (
-              <p className="text-xs text-[var(--t-text3)]">ยังไม่มี — กดปุ่มด้านบนเพื่อเพิ่ม</p>
+              <p className="text-xs text-[var(--t-text3)]">None yet — use the buttons above to add.</p>
             )}
             <div className="space-y-2">
               {certFields.map((c, i) => (
@@ -249,28 +243,27 @@ function MaintenanceModal({ record, assets, employees, onClose, onSave }) {
             </div>
           </div>
 
-          {/* ── Section 5: Custom Fields ── */}
           <div className="border-t border-[var(--t-border)] pt-4">
             <div className="flex items-center justify-between mb-3">
               <div className="text-xs font-semibold text-[var(--t-text3)] uppercase tracking-wider">
-                ข้อมูลเพิ่มเติม (Custom)
+                Additional Information (Custom)
               </div>
               <button type="button"
                 onClick={() => setCustomFields(f => [...f, { key: '', value: '' }])}
                 className="btn-ghost text-xs flex items-center gap-1">
-                <Plus className="w-3.5 h-3.5" />เพิ่มช่อง
+                <Plus className="w-3.5 h-3.5" />Add Field
               </button>
             </div>
             {customFields.length === 0 && (
-              <p className="text-xs text-[var(--t-text3)]">เช่น SWL, WLL, Test Load, Third Party Inspector ฯลฯ</p>
+              <p className="text-xs text-[var(--t-text3)]">e.g., SWL, WLL, Test Load, Third Party Inspector etc.</p>
             )}
             <div className="space-y-2">
               {customFields.map((f, i) => (
                 <div key={i} className="flex gap-2 items-center">
-                  <input placeholder="ชื่อ เช่น SWL" value={f.key}
+                  <input placeholder="Name, e.g., SWL" value={f.key}
                     onChange={e => setCustomFields(cf => cf.map((c, j) => j === i ? { ...c, key: e.target.value } : c))}
                     className="input-field w-36 flex-shrink-0 text-xs" />
-                  <input placeholder="ค่า เช่น 25 Tons" value={f.value}
+                  <input placeholder="Value, e.g., 25 Tons" value={f.value}
                     onChange={e => setCustomFields(cf => cf.map((c, j) => j === i ? { ...c, value: e.target.value } : c))}
                     className="input-field flex-1 text-xs" />
                   <button type="button"
@@ -285,19 +278,18 @@ function MaintenanceModal({ record, assets, employees, onClose, onSave }) {
 
         </div>
 
-        {/* Footer */}
         <div className="sticky bottom-0 modal-bg border-t border-[var(--t-border)] px-5 py-4 flex items-center justify-between">
           <div>
             {record && (
               <button type="button" onClick={del} className="btn-danger text-xs flex items-center gap-1">
-                <Trash2 className="w-3.5 h-3.5" />ลบ
+                <Trash2 className="w-3.5 h-3.5" />Delete
               </button>
             )}
           </div>
           <div className="flex gap-2">
-            <button type="button" onClick={onClose} className="btn-secondary">ยกเลิก</button>
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
             <button type="button" onClick={save} disabled={saving} className="btn-primary">
-              {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+              {saving ? 'Saving...' : 'Save'}
             </button>
           </div>
         </div>
@@ -306,14 +298,13 @@ function MaintenanceModal({ record, assets, employees, onClose, onSave }) {
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────
 export default function MaintenancePage() {
   const [records, setRecords]     = useState([]);
   const [assets, setAssets]       = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading]     = useState(true);
   const [search, setSearch]       = useState('');
-  const [statusFilter, setStatus] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('All');
   const [showModal, setShowModal] = useState(false);
   const [selected, setSelected]   = useState(null);
   const [expanded, setExpanded]   = useState(null); // expanded row id
@@ -325,7 +316,9 @@ export default function MaintenancePage() {
       assetsService.getAll(),
       employeesService.getAll(),
     ]);
-    setRecords(r); setAssets(a); setEmployees(e);
+    setRecords(r.sort((i,j) => j.id.localeCompare(i.id))); 
+    setAssets(a); 
+    setEmployees(e);
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -343,6 +336,13 @@ export default function MaintenancePage() {
       || r.description?.toLowerCase().includes(s);
     return m && (statusFilter === 'All' || r.status === statusFilter);
   });
+  
+  const isFiltered = search !== '' || statusFilter !== 'All';
+
+  const handleClearFilters = () => {
+      setSearch('');
+      setStatusFilter('All');
+  };
 
   const totalCost = records.reduce((s, r) => s + (Number(r.cost) || 0), 0);
 
@@ -369,13 +369,12 @@ export default function MaintenancePage() {
     const ws = XLSX.utils.json_to_sheet(data);
     XLSX.utils.book_append_sheet(wb, ws, 'Maintenance');
     XLSX.writeFile(wb, `Maintenance_${format(new Date(), 'yyyyMMdd')}.xlsx`);
-    toast.success('Export แล้ว');
+    toast.success('Exported successfully.');
   };
 
   return (
     <div className="space-y-5 animate-fade-in">
 
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="section-title flex items-center gap-2">
@@ -394,7 +393,6 @@ export default function MaintenancePage() {
         </div>
       </div>
 
-      {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: 'Total Job Cards',  value: records.length,                                      color: 'var(--t-text)' },
@@ -409,17 +407,16 @@ export default function MaintenancePage() {
         ))}
       </div>
 
-      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--t-text3)' }} />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="ค้นหา Job Card No., Asset, รายละเอียด..."
+            placeholder="Search Job Card No., Asset, Description..."
             className="input-field pl-9" />
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex items-center flex-wrap gap-2">
           {['All', ...STATUS_OPTIONS].map(s => (
-            <button key={s} onClick={() => setStatus(s)}
+            <button key={s} onClick={() => setStatusFilter(s)}
               className={clsx('px-3 py-1.5 rounded-lg text-xs border transition-all',
                 statusFilter === s
                   ? 'bg-orange-600 text-white border-orange-500'
@@ -428,10 +425,15 @@ export default function MaintenancePage() {
               {s}
             </button>
           ))}
+          {isFiltered && (
+              <button onClick={handleClearFilters} className="btn-secondary text-xs flex items-center gap-1.5">
+                  <X className="w-4 h-4"/>
+                  Clear Filter
+              </button>
+          )}
         </div>
       </div>
 
-      {/* Table */}
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="data-table">
@@ -480,7 +482,7 @@ export default function MaintenancePage() {
                         <div className="font-medium text-sm" style={{ color: 'var(--t-text)' }}>
                           {asset?.name?.substring(0, 30) || rec.assetId}
                         </div>
-                        <div className="text-xs font-mono" style={{ color: 'var(--t-text3)' }}>{rec.assetId}</div>
+                        <div className="text-xs font-mono" style={{ color: 'var(--t-text3)' }}>{asset?.assetNo || rec.assetId}</div>
                       </td>
                       <td>
                         <div className="flex flex-wrap gap-1">
@@ -523,29 +525,26 @@ export default function MaintenancePage() {
                       </td>
                     </tr>
 
-                    {/* Expanded detail row */}
                     {isExpanded && (
                       <tr key={rec.id + '-detail'} style={{ background: 'var(--t-bg3)' }}>
                         <td colSpan={8} className="px-5 py-4">
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
 
-                            {/* Description & remarks */}
                             <div className="space-y-2">
                               {rec.description && (
                                 <div>
-                                  <div className="font-semibold mb-1" style={{ color: 'var(--t-text3)' }}>รายละเอียดงาน</div>
+                                  <div className="font-semibold mb-1" style={{ color: 'var(--t-text3)' }}>Work Details</div>
                                   <div style={{ color: 'var(--t-text2)' }}>{rec.description}</div>
                                 </div>
                               )}
                               {rec.remarks && (
                                 <div>
-                                  <div className="font-semibold mb-1" style={{ color: 'var(--t-text3)' }}>หมายเหตุ / ติดขัด</div>
+                                  <div className="font-semibold mb-1" style={{ color: 'var(--t-text3)' }}>Remarks / Issues</div>
                                   <div className="text-amber-600">{rec.remarks}</div>
                                 </div>
                               )}
                             </div>
 
-                            {/* Cert dates */}
                             {(rec.certFields || []).length > 0 && (
                               <div>
                                 <div className="font-semibold mb-2" style={{ color: 'var(--t-text3)' }}>Certificate Dates</div>
@@ -563,17 +562,16 @@ export default function MaintenancePage() {
                               </div>
                             )}
 
-                            {/* Custom fields */}
                             {(rec.customFields || []).filter(c => c.key).length > 0 && (
                               <div>
-                                <div className="font-semibold mb-2" style={{ color: 'var(--t-text3)' }}>ข้อมูลเพิ่มเติม</div>
+                                <div className="font-semibold mb-2" style={{ color: 'var(--t-text3)' }}>Additional Information</div>
                                 <div className="space-y-1.5">
                                   {rec.customFields.filter(c => c.key).map((c, i) => (
                                     <div key={i} className="flex items-center justify-between">
                                       <span style={{ color: 'var(--t-text3)' }}>{c.key}</span>
                                       <span className="font-medium" style={{ color: 'var(--t-text)' }}>{c.value}</span>
                                     </div>
-                                  ))}
+                                  ))}\
                                 </div>
                               </div>
                             )}

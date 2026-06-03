@@ -145,26 +145,55 @@ export const exportMaintenanceToExcel = (records, assets) => {
 export const exportManpowerToExcel = (employees) => {
   const wb = XLSX.utils.book_new();
 
-  const data = employees.map(e => ({
+  // Create one sheet for the simple register
+  const summaryData = employees.map(e => ({
     'Employee ID': e.id,
     'Name': e.name,
     'Position': e.position,
     'Department': e.department,
-    'Status': e.availability,
-    'Current Project': e.currentProject || 'N/A',
+    'Current Status': e.availability,
     'Rotation': e.rotation,
-    'Utilization %': e.utilization,
-    'Offshore Cert Expiry': e.offshoreExpiry,
-    'BOSI Expiry': e.bosiExpiry,
-    'HUET Expiry': e.huetExpiry,
-    'Medical Expiry': e.medicalExpiry,
-    'Certifications': e.certifications?.join(', ') || '',
-    'Skills': e.skills?.join(', ') || '',
+    'Email': e.email,
+    'Phone': e.phone,
   }));
+  const summaryWS = XLSX.utils.json_to_sheet(summaryData);
+  summaryWS['!cols'] = [ {wch:15},{wch:25},{wch:25},{wch:20},{wch:15},{wch:15},{wch:30},{wch:15} ];
+  XLSX.utils.book_append_sheet(wb, summaryWS, 'Manpower Register');
 
-  const ws = XLSX.utils.json_to_sheet(data);
-  ws['!cols'] = Array(14).fill({ wch: 22 });
-  XLSX.utils.book_append_sheet(wb, ws, 'Manpower Register');
+
+  // Create a second sheet for the detailed schedule log
+  const scheduleData = [];
+  employees.forEach(e => {
+    if (e.schedule && e.schedule.length > 0) {
+      e.schedule.forEach(entry => {
+        scheduleData.push({
+          'Employee ID': e.id,
+          'Name': e.name,
+          'Position': e.position,
+          'Schedule Type': entry.type,
+          'Details': entry.details,
+          'Start Date': entry.startDate,
+          'End Date': entry.endDate || 'Present',
+        });
+      });
+    } else {
+      // Optionally, include employees with no schedule history
+      scheduleData.push({
+        'Employee ID': e.id,
+        'Name': e.name,
+        'Position': e.position,
+        'Schedule Type': 'No Schedule Entries',
+        'Details': '',
+        'Start Date': '',
+        'End Date': '',
+      });
+    }
+  });
+
+  const scheduleWS = XLSX.utils.json_to_sheet(scheduleData);
+  scheduleWS['!cols'] = [ {wch:15},{wch:25},{wch:25},{wch:20},{wch:30},{wch:12},{wch:12} ];
+  XLSX.utils.book_append_sheet(wb, scheduleWS, 'Schedule History');
+
 
   XLSX.writeFile(wb, `Manpower_Report_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
 };

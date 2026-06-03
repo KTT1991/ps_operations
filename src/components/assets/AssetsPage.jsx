@@ -41,20 +41,20 @@ function AssetModal({ asset, onClose, onSave }) {
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
-    if (!form.name) { toast.error('กรอกชื่ออุปกรณ์ด้วย'); return; }
+    if (!form.name) { toast.error('Please enter the asset name.'); return; }
     setSaving(true);
     try {
       const data = { ...form, customFields };
-      if (asset?.id) { await assetsService.update(asset.id, data); toast.success('แก้ไขแล้ว'); }
-      else { await assetsService.create({ ...data, id: `AST-${Date.now()}` }); toast.success('เพิ่มแล้ว'); }
+      if (asset?.id) { await assetsService.update(asset.id, data); toast.success('Updated successfully.'); }
+      else { await assetsService.create({ ...data, id: `AST-${Date.now()}` }); toast.success('Added successfully.'); }
       onSave(); onClose();
-    } catch { toast.error('บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
+    } catch { toast.error('Save failed.'); } finally { setSaving(false); }
   };
 
   const del = async () => {
-    if (!asset?.id || !confirm(`ลบ ${form.name}?`)) return;
+    if (!asset?.id || !confirm(`Delete ${form.name}?`)) return;
     await assetsService.delete(asset.id);
-    toast.success('ลบแล้ว'); onSave(); onClose();
+    toast.success('Deleted successfully.'); onSave(); onClose();
   };
 
   return (
@@ -62,7 +62,7 @@ function AssetModal({ asset, onClose, onSave }) {
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose}/>
       <div className="relative modal-bg border rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-fade-in shadow-2xl">
         <div className="sticky top-0 modal-bg z-10 flex items-center justify-between px-5 py-4 border-b">
-          <h2 className="font-semibold text-sm">{asset?'แก้ไขอุปกรณ์':'เพิ่มอุปกรณ์ใหม่'}</h2>
+          <h2 className="font-semibold text-sm">{asset?'Edit Asset':'Add New Asset'}</h2>
           <button onClick={onClose} className="btn-ghost p-1"><X className="w-4 h-4"/></button>
         </div>
         <div className="p-5 space-y-4">
@@ -82,7 +82,7 @@ function AssetModal({ asset, onClose, onSave }) {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className="text-xs text-[var(--t-text3)] block mb-1">ชื่ออุปกรณ์ *</label>
+              <label className="text-xs text-[var(--t-text3)] block mb-1">Asset Name *</label>
               <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className="input-field"/>
             </div>
             {[
@@ -111,17 +111,17 @@ function AssetModal({ asset, onClose, onSave }) {
             <div className="flex items-center justify-between mb-3">
               <div className="text-xs font-semibold text-[var(--t-text3)] uppercase tracking-wider">Custom Fields</div>
               <button onClick={()=>setCustomFields(f=>[...f,{key:'',value:''}])} className="btn-ghost text-xs flex items-center gap-1">
-                <Plus className="w-3.5 h-3.5"/>เพิ่มช่อง
+                <Plus className="w-3.5 h-3.5"/>Add Field
               </button>
             </div>
-            {customFields.length===0&&<p className="text-xs text-slate-600">กด "+ เพิ่มช่อง" เพื่อเพิ่มข้อมูลเพิ่มเติม เช่น SWL, WLL, Test Pressure</p>}
+            {customFields.length===0&&<p className="text-xs text-slate-600">Click "+ Add Field" to add more information, e.g., SWL, WLL, Test Pressure.</p>}
             <div className="space-y-2">
               {customFields.map((f,i)=>(
                 <div key={i} className="flex gap-2 items-center">
-                  <input placeholder="Field name เช่น SWL, WLL" value={f.key}
+                  <input placeholder="Field name, e.g., SWL, WLL" value={f.key}
                     onChange={e=>setCustomFields(cf=>cf.map((c,j)=>j===i?{...c,key:e.target.value}:c))}
                     className="input-field w-40 flex-shrink-0 text-xs"/>
-                  <input placeholder="ค่า เช่น 25 Tons" value={f.value}
+                  <input placeholder="Value, e.g., 25 Tons" value={f.value}
                     onChange={e=>setCustomFields(cf=>cf.map((c,j)=>j===i?{...c,value:e.target.value}:c))}
                     className="input-field flex-1 text-xs"/>
                   <button onClick={()=>setCustomFields(cf=>cf.filter((_,j)=>j!==i))} className="btn-ghost p-1 text-red-400">
@@ -133,10 +133,10 @@ function AssetModal({ asset, onClose, onSave }) {
           </div>
         </div>
         <div className="sticky bottom-0 modal-bg border-t px-5 py-4 flex items-center justify-between">
-          <div>{asset&&<button onClick={del} className="btn-danger text-xs flex items-center gap-1"><Trash2 className="w-3.5 h-3.5"/>ลบ</button>}</div>
+          <div>{asset&&<button onClick={del} className="btn-danger text-xs flex items-center gap-1"><Trash2 className="w-3.5 h-3.5"/>Delete</button>}</div>
           <div className="flex gap-2">
-            <button onClick={onClose} className="btn-secondary">ยกเลิก</button>
-            <button onClick={save} disabled={saving} className="btn-primary">{saving?'Saving...':'บันทึก'}</button>
+            <button onClick={onClose} className="btn-secondary">Cancel</button>
+            <button onClick={save} disabled={saving} className="btn-primary">{saving?'Saving...':'Save'}</button>
           </div>
         </div>
       </div>
@@ -209,7 +209,7 @@ export default function AssetsPage() {
     {/* ✅ ปุ่ม Migration — ลบทิ้งหลังใช้แล้ว */}
     <button
       onClick={async () => {
-        if (!confirm('รัน Migration แปลง currentProject ทั้งหมด?')) return;
+        if (!confirm('Run migration for all current projects?')) return;
         const projs = await projectsService.getAll();
         const allAssets = await assetsService.getAll();
         let updated = 0;
@@ -228,7 +228,7 @@ export default function AssetsPage() {
             updated++;
           }
         }
-        alert(`Migration เสร็จ! Updated ${updated} assets`);
+        alert(`Migration complete! Updated ${updated} assets`);
         load();
       }}
       className="btn-danger text-xs"
@@ -260,7 +260,7 @@ export default function AssetsPage() {
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--t-text3)]"/>
-          <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} placeholder="ค้นหา Asset ID, ชื่อ, Serial No., Location..." className="input-field pl-9"/>
+          <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} placeholder="Search Asset ID, Name, Serial No., Location..." className="input-field pl-9"/>
         </div>
         <select value={catFilter} onChange={e=>{setCat(e.target.value);setPage(1);}} className="select-field sm:w-52">
           {categories.map(c=><option key={c}>{c}</option>)}

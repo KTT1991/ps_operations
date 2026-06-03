@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  CalendarDays, Package, Users, AlertTriangle, CheckCircle,
+  CalendarDays, Package, Users, AlertTriangle, CheckCircle, FolderKanban, 
   Clock, Search, Plus, X, ChevronRight, Zap
 } from 'lucide-react';
 import { assetsService, projectsService, employeesService } from '../../services/firebaseService';
-import { format, parseISO, differenceInDays, addDays, isWithinInterval, isBefore, isAfter } from 'date-fns';
+import { format, parseISO, differenceInDays, addDays, isBefore, isAfter, isEqual } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 
@@ -14,20 +15,16 @@ const T = {
   border:'var(--t-border)', border2:'var(--t-border2)',
 };
 
-// ── helpers ──────────────────────────────────────────────────────────────
 const today = () => { const d = new Date(); d.setHours(0,0,0,0); return d; };
 const parse = (s) => { try { return s ? parseISO(s) : null; } catch { return null; } };
 
 function isAvailableOn(asset, fromDate, toDate) {
-  // Asset is available if:
-  // 1. status = Available, OR
-  // 2. availableFrom <= fromDate (returns before we need it)
   if (asset.status === 'Available') return { ok: true, reason: 'Available now' };
   if (asset.status === 'Damaged')   return { ok: false, reason: 'Damaged — not deployable' };
   if (asset.status === 'Under Maintenance' || asset.status === 'Calibration') {
     const avail = parse(asset.availableDate || asset.maintenanceDue);
     if (!avail) return { ok: false, reason: 'In maintenance — return date unknown' };
-    if (isBefore(avail, fromDate) || avail.getTime() === fromDate.getTime())
+    if (isBefore(avail, fromDate) || isEqual(avail, fromDate))
       return { ok: true, reason: `Returns ${format(avail,'dd MMM')} — before needed` };
     return { ok: false, reason: `Returns ${format(avail,'dd MMM')} — after mobilization` };
   }
@@ -35,211 +32,286 @@ function isAvailableOn(asset, fromDate, toDate) {
     const avail = parse(asset.availableDate);
     if (!avail) return { ok: false, reason: 'In use — return date unknown' };
     const daysUntil = differenceInDays(avail, today());
-    if (isBefore(avail, fromDate) || avail.getTime() === fromDate.getTime())
+    if (isBefore(avail, fromDate) || isEqual(avail, fromDate))
       return { ok: true, reason: `Returns ${format(avail,'dd MMM')} (${daysUntil}d)` };
     return { ok: false, reason: `Returns ${format(avail,'dd MMM')} — ${differenceInDays(avail,fromDate)}d late` };
   }
   return { ok: true, reason: asset.status };
 }
 
-function isEmployeeAvailable(emp, fromDate, toDate, allProjects) {
-  if (emp.availability === 'Available') return { ok: true, reason: 'Available' };
-  if (emp.availability === 'On Leave')  return { ok: false, reason: 'On Leave' };
-  if (emp.availability === 'Training')  return { ok: false, reason: 'In Training' };
-
-  // Check cert expiry
+function isEmployeeAvailable(emp, fromDate, toDate) {
+  // 1. Check for expired certificates for the required period
   const expiredCerts = (emp.certFields || []).filter(c => {
     if (!c.expiry) return false;
-    return isBefore(parseISO(c.expiry), fromDate);
+    const expiryDate = parse(c.expiry);
+    return expiryDate && isBefore(expiryDate, fromDate);
   });
-  if (expiredCerts.length > 0)
-    return { ok: false, reason: `Cert expired: ${expiredCerts.map(c=>c.label).join(', ')}` };
-
-  // Check if assigned to overlapping project
-  if (emp.currentProject) {
-    const proj = allProjects.find(p => p.id === emp.currentProject);
-    if (proj && proj.endDate) {
-      const projEnd = parseISO(proj.endDate);
-      if (isAfter(projEnd, fromDate))
-        return { ok: false, reason: `On ${proj.name?.substring(0,25)} until ${format(projEnd,'dd MMM')}` };
-    }
-    return { ok: false, reason: `Assigned to ${emp.currentProject}` };
+  if (expiredCerts.length > 0) {
+    return { ok: false, reason: `Cert expired: ${expiredCerts.map(c => c.label).join(', ')}` };
   }
 
-  return { ok: true, reason: emp.availability };
+  // 2. Check for schedule conflicts
+  const schedule = emp.schedule || [];
+  const requiredStart = fromDate;
+  // If toDate is not provided, check for a single day.
+  const requiredEnd = toDate || fromDate;
+
+  for (const entry of schedule) {
+    const entryStart = parse(entry.startDate);
+    // If an entry has no end date, treat it as ongoing to a far future date.
+    const entryEnd = entry.endDate ? parse(entry.endDate) : new Date('2999-12-31');
+
+    if (entryStart) {
+      // Standard check for overlapping intervals: (StartA <= EndB) and (StartB <= EndA)
+      const isOverlapping = isBefore(requiredStart, entryEnd) && isAfter(requiredEnd, entryStart);
+
+      if (isOverlapping) {
+        return { 
+          ok: false, 
+          reason: `${entry.type}: ${entry.details} (${format(entryStart, 'dd MMM')} - ${entry.endDate ? format(entryEnd, 'dd MMM') : 'Present'})`
+        };
+      }
+    }
+  }
+  
+  // 3. If no conflicts found, the employee is available.
+  return { ok: true, reason: 'Available' };
 }
 
-function ConflictBadge({ ok, reason }) {
+function StatusBadge({ gap, exists }) {
+  if (!exists) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs font-semibold text-red-500">
+        <X className="w-3.5 h-3.5"/>
+        <span>Not in Stock</span>
+      </div>
+    );
+  }
+  if (gap <= 0) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs font-semibold text-green-600">
+        <CheckCircle className="w-3.5 h-3.5"/>
+        <span>Sufficient</span>
+      </div>
+    );
+  }
   return (
-    <div className={clsx('flex items-start gap-1.5 text-xs rounded px-2 py-1 mt-1',
-      ok ? 'bg-green-500/10 text-green-600' : 'bg-red-500/10 text-red-500')}
-      style={{border:`1px solid ${ok?'rgba(34,197,94,.3)':'rgba(239,68,68,.3)'}`}}>
-      {ok
-        ? <CheckCircle className="w-3 h-3 mt-0.5 flex-shrink-0"/>
-        : <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0"/>}
-      <span>{reason}</span>
+    <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-500">
+      <AlertTriangle className="w-3.5 h-3.5"/>
+      <span>Shortfall: {gap}</span>
     </div>
   );
 }
 
-// ── Availability Timeline Bar (mini gantt per resource) ──────────────────
-function MiniGantt({ items, viewStart, viewDays, getBar, label }) {
-  return (
-    <div className="space-y-1">
-      {items.slice(0,8).map((item, i) => {
-        const bar = getBar(item);
-        return (
-          <div key={item.id||i} className="flex items-center gap-2">
-            <div className="text-xs truncate flex-shrink-0" style={{width:130,color:T.text2}} title={item.name||item[label]}>
-              {(item.name||item[label]||'').substring(0,18)}
-            </div>
-            <div className="flex-1 rounded h-5 relative overflow-hidden" style={{background:T.bg4}}>
-              {bar.map((seg,si)=>(
-                <div key={si} className="absolute top-0 h-full rounded text-[9px] flex items-center px-1 overflow-hidden"
-                  style={{left:`${seg.left}%`,width:`${seg.width}%`,background:seg.color,color:'#fff',minWidth:2}}>
-                  {seg.width > 8 && seg.label}
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── Project Requirement Checker ──────────────────────────────────────────
-function ProjectChecker({ project, assets, employees, allProjects }) {
+function GapAnalysis({ project, assets, employees, onGoToProjects }) {
   if (!project) return null;
-  const mobDate = parse(project.mobilizationDate || project.startDate);
-  const endDate = parse(project.endDate);
-  if (!mobDate) return <p className="text-xs" style={{color:T.text3}}>Project has no mobilization date</p>;
 
-  const reqAssets  = (project.requiredEquipment || []);
-  const reqEmpIds  = (project.requiredTechnicians || []);
+  const mobDate = useMemo(() => parse(project.mobilizationDate || project.startDate), [project]);
+  const endDate = useMemo(() => parse(project.endDate || project.mobilizationDate || project.startDate), [project]);
 
-  const assetChecks = reqAssets.map(id => {
-    const a = assets.find(x => x.id === id);
-    if (!a) return { id, name: id, avail: { ok: false, reason: 'Asset not found in system' } };
-    return { id, name: a.name, avail: isAvailableOn(a, mobDate, endDate) };
-  });
+  const checks = useMemo(() => {
+    if (!mobDate) return { analysis: [], overallReadiness: 0, totalShortfall: 0 };
+    
+    const genericReqs = project.genericRequirements || [];
+    if (genericReqs.length === 0) return { analysis: [], overallReadiness: 100, totalShortfall: 0 };
 
-  const empChecks = reqEmpIds.map(id => {
-    const e = employees.find(x => x.id === id);
-    if (!e) return { id, name: id, avail: { ok: false, reason: 'Employee not found' } };
-    return { id, name: e.name, avail: isEmployeeAvailable(e, mobDate, endDate, allProjects) };
-  });
+    const employeePositions = [...new Set(employees.map(e => e.position).filter(Boolean))];
 
-  const allOk = [...assetChecks, ...empChecks].every(c => c.avail.ok);
-  const readiness = allOk ? 100
-    : Math.round(([...assetChecks,...empChecks].filter(c=>c.avail.ok).length / Math.max([...assetChecks,...empChecks].length,1)) * 100);
+    const analysis = genericReqs.map(req => {
+      const lowerReqItem = req.item.toLowerCase();
+      const isManpower = employeePositions.map(p=>p.toLowerCase()).includes(lowerReqItem);
+      
+      if (isManpower) {
+        const matchingEmployees = employees.filter(e => e.position.toLowerCase() === lowerReqItem);
+        const availableEmployees = matchingEmployees.filter(e => isEmployeeAvailable(e, mobDate, endDate).ok);
+        return {
+          type: 'Manpower',
+          name: req.item,
+          unit: req.unit,
+          required: req.quantity,
+          available: availableEmployees.length,
+          gap: Math.max(0, req.quantity - availableEmployees.length),
+          exists: true
+        };
+      } else {
+        const matchingAssets = assets.filter(a => 
+          a.category?.toLowerCase() === lowerReqItem || 
+          a.name?.toLowerCase() === lowerReqItem
+        );
+        const availableAssets = matchingAssets.filter(a => isAvailableOn(a, mobDate, endDate).ok);
+        const existsInStock = matchingAssets.length > 0;
+        return {
+          type: 'Equipment',
+          name: req.item,
+          unit: req.unit,
+          required: req.quantity,
+          available: availableAssets.length,
+          gap: Math.max(0, req.quantity - availableAssets.length),
+          exists: existsInStock
+        };
+      }
+    });
+
+    const totalRequired = analysis.reduce((sum, item) => sum + item.required, 0);
+    const totalFulfilled = analysis.reduce((sum, item) => sum + (item.required - item.gap), 0);
+    const overallReadiness = totalRequired > 0 ? Math.round((totalFulfilled / totalRequired) * 100) : 100;
+    const totalShortfall = analysis.reduce((sum, item) => sum + item.gap, 0);
+
+    return { analysis, overallReadiness, totalShortfall };
+  }, [project, assets, employees, mobDate, endDate]);
+  
+  const { analysis, overallReadiness, totalShortfall } = checks;
+
+  if (!mobDate) {
+    return (
+      <div className="text-center py-6">
+        <AlertTriangle className="w-10 h-10 mx-auto mb-3 opacity-40" style={{color: T.text3}}/>
+        <h3 className="font-semibold" style={{color: T.text}}>No Mobilization Date</h3>
+        <p className="text-xs mt-1 mb-4" style={{color:T.text3}}>
+          Please set a Mobilization or Start Date for this project to run the analysis.
+        </p>
+        <button onClick={onGoToProjects} className="btn-secondary text-xs">Edit Project</button>
+      </div>
+    );
+  }
+
+  if (!project.genericRequirements || project.genericRequirements.length === 0) {
+    return (
+       <div className="text-center py-6">
+            <Users className="w-10 h-10 mx-auto mb-3 opacity-20" style={{color: T.text3}}/>
+            <h3 className="font-semibold" style={{color: T.text}}>No Requirements Found</h3>
+            <p className="text-xs mt-1 mb-4" style={{color:T.text3}}>
+                This project doesn't have any requirements specified yet.<br/>You can add them in the Project Management page.
+            </p>
+            <button onClick={onGoToProjects} className="btn-secondary text-xs flex items-center gap-2 mx-auto">
+                <FolderKanban className="w-3.5 h-3.5" />
+                Go to Project Management
+            </button>
+        </div>
+    );
+  }
 
   return (
-    <div className="space-y-3">
-      {/* Summary */}
+    <div className="space-y-4">
       <div className="flex items-center gap-3 p-3 rounded-lg"
-        style={{background:allOk?'rgba(34,197,94,.08)':'rgba(239,68,68,.08)',
-          border:`1px solid ${allOk?'rgba(34,197,94,.3)':'rgba(239,68,68,.3)'}`}}>
-        {allOk
+        style={{background: totalShortfall === 0 ?'rgba(34,197,94,.08)':'rgba(239,68,68,.08)',
+          border:`1px solid ${totalShortfall === 0 ? 'rgba(34,197,94,.3)':'rgba(239,68,68,.3)'}`}}>
+        {totalShortfall === 0
           ? <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0"/>
           : <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0"/>}
         <div>
-          <div className="text-sm font-semibold" style={{color:allOk?'#22c55e':'#ef4444'}}>
-            {allOk ? 'All resources available ✓' : `${[...assetChecks,...empChecks].filter(c=>!c.avail.ok).length} conflict(s) detected`}
+          <div className="text-sm font-semibold" style={{color: totalShortfall === 0 ? '#22c55e':'#ef4444'}}>
+            {totalShortfall === 0 ? 'All requirements met' : `${totalShortfall} total unit(s) shortfall`}
           </div>
           <div className="text-xs mt-0.5" style={{color:T.text3}}>
-            Mobilization: {format(mobDate,'dd MMM yyyy')} · Resource readiness: {readiness}%
+            Mobilization: {format(mobDate,'dd MMM yyyy')} · Overall readiness: {overallReadiness}%
           </div>
         </div>
         <div className="ml-auto text-right">
-          <div className="text-2xl font-bold" style={{color:allOk?'#22c55e':readiness>=60?'#f59e0b':'#ef4444'}}>
-            {readiness}%
+          <div className="text-2xl font-bold" style={{color: overallReadiness >= 80 ? '#22c55e' : overallReadiness >= 50 ? '#f59e0b' : '#ef4444'}}>
+            {overallReadiness}%
           </div>
           <div className="w-20 progress-bar mt-1">
-            <div className="progress-fill" style={{width:`${readiness}%`,
-              background:allOk?'#22c55e':readiness>=60?'#f59e0b':'#ef4444'}}/>
+            <div className="progress-fill" style={{width:`${overallReadiness}%`,
+              background: overallReadiness >= 80 ? '#22c55e' : overallReadiness >= 50 ? '#f59e0b' : '#ef4444'}}/>
           </div>
         </div>
       </div>
-
-      {/* Equipment */}
-      {assetChecks.length > 0 && (
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5"
-            style={{color:T.text3}}>
-            <Package className="w-3.5 h-3.5"/>Equipment ({assetChecks.length})
-          </div>
-          <div className="space-y-1.5">
-            {assetChecks.map(c=>(
-              <div key={c.id} className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="text-xs font-medium" style={{color:T.text}}>{c.name}</div>
-                  <ConflictBadge ok={c.avail.ok} reason={c.avail.reason}/>
-                </div>
-              </div>
+      
+      <div className="overflow-x-auto">
+        <table className="data-table w-full">
+          <thead>
+            <tr>
+              <th>Requirement</th>
+              <th className="text-center">Required</th>
+              <th className="text-center">Available</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {analysis.map((item, index) => (
+              <tr key={index}>
+                <td>
+                  <div className="font-semibold text-xs capitalize" style={{color: T.text}}>{item.name}</div>
+                  <div className="text-[10px]" style={{color: T.text3}}>{item.type}</div>
+                </td>
+                <td className="text-center text-xs">{item.required} {item.unit}</td>
+                <td className="text-center text-xs">{item.available} {item.unit}</td>
+                <td><StatusBadge gap={item.gap} exists={item.exists} /></td>
+              </tr>
             ))}
-          </div>
-        </div>
-      )}
-
-      {/* Manpower */}
-      {empChecks.length > 0 && (
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5"
-            style={{color:T.text3}}>
-            <Users className="w-3.5 h-3.5"/>Manpower ({empChecks.length})
-          </div>
-          <div className="space-y-1.5">
-            {empChecks.map(c=>(
-              <div key={c.id}>
-                <div className="text-xs font-medium" style={{color:T.text}}>{c.name}</div>
-                <ConflictBadge ok={c.avail.ok} reason={c.avail.reason}/>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {(assetChecks.length === 0 && empChecks.length === 0) && (
-        <p className="text-xs" style={{color:T.text3}}>
-          No required equipment or technicians assigned to this project yet.<br/>
-          Go to Project Management → assign resources.
-        </p>
-      )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
 
-// ── Asset Availability Table ──────────────────────────────────────────────
-function AssetAvailabilityTable({ assets, projects, searchDate }) {
-  const rows = useMemo(() => assets.map(a => {
+
+function AssetAvailabilityTable({ assets, searchDate }) {
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 30;
+
+  const assetCategories = useMemo(() => ['All', ...new Set(assets.map(a => a.category).filter(Boolean))], [assets]);
+  const assetStatuses = ['All', 'Available', 'In Use', 'Under Maintenance', 'Calibration', 'Damaged'];
+
+  const filteredAssets = useMemo(() => {
+    return assets.filter(a => {
+        if (categoryFilter !== 'All' && a.category !== categoryFilter) return false;
+        if (statusFilter !== 'All' && a.status !== statusFilter) return false;
+        if (search) {
+            const lowerSearch = search.toLowerCase();
+            return a.name?.toLowerCase().includes(lowerSearch) ||
+                   a.id?.toLowerCase().includes(lowerSearch) ||
+                   a.location?.toLowerCase().includes(lowerSearch);
+        }
+        return true;
+    });
+  }, [assets, search, categoryFilter, statusFilter]);
+
+  const totalPages = Math.ceil(filteredAssets.length / ITEMS_PER_PAGE);
+  const paginatedAssets = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredAssets.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredAssets, currentPage]);
+
+  const rows = useMemo(() => paginatedAssets.map(a => {
     const avail = isAvailableOn(a, searchDate, searchDate);
     const daysUntilAvail = a.availableDate
       ? differenceInDays(parseISO(a.availableDate), today())
       : null;
     return { ...a, avail, daysUntilAvail };
-  }), [assets, searchDate]);
-
-  const available = rows.filter(r => r.avail.ok);
-  const unavailable = rows.filter(r => !r.avail.ok);
+  }), [paginatedAssets, searchDate]);
 
   return (
     <div className="space-y-4">
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label:'Available on date', value:available.length, color:'#22c55e' },
-          { label:'Unavailable',       value:unavailable.length, color:'#ef4444' },
-          { label:'Return ≤ 7 days',   value:rows.filter(r=>r.daysUntilAvail!==null&&r.daysUntilAvail>=0&&r.daysUntilAvail<=7).length, color:'#f59e0b' },
-        ].map(k=>(
-          <div key={k.label} className="kpi-card py-3">
-            <div className="text-xl font-bold" style={{color:k.color}}>{k.value}</div>
-            <div className="text-xs" style={{color:T.text3}}>{k.label}</div>
+      <div className="flex flex-wrap gap-3">
+          <div className="flex-1 min-w-[200px]">
+              <label className="text-xs block mb-1" style={{color:T.text3}}>Search Name/ID</label>
+              <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: T.text3 }} />
+                  <input value={search} onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
+                  placeholder={`Search ${assets.length} assets...`}
+                  className="input-field pl-9" />
+              </div>
           </div>
-        ))}
+          <div>
+              <label className="text-xs block mb-1" style={{color:T.text3}}>Category</label>
+              <select value={categoryFilter} onChange={e => { setCategoryFilter(e.target.value); setCurrentPage(1); }} className="select-field w-44">
+                  {assetCategories.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+          </div>
+          <div>
+              <label className="text-xs block mb-1" style={{color:T.text3}}>Status</label>
+              <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setCurrentPage(1); }} className="select-field w-44">
+                  {assetStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+          </div>
       </div>
 
-      {/* Table */}
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="data-table">
@@ -247,7 +319,7 @@ function AssetAvailabilityTable({ assets, projects, searchDate }) {
               <tr><th>Asset</th><th>Category</th><th>Status</th><th>Location</th><th>Available Date</th><th>On {format(searchDate,'dd MMM')}?</th></tr>
             </thead>
             <tbody>
-              {rows.slice(0,30).map(a=>(
+              {rows.map(a=>(
                 <tr key={a.id}>
                   <td>
                     <div className="text-xs font-semibold" style={{color:T.text}}>{a.name?.substring(0,35)}</div>
@@ -282,54 +354,130 @@ function AssetAvailabilityTable({ assets, projects, searchDate }) {
             </tbody>
           </table>
         </div>
-        <div className="px-4 py-2.5 text-xs" style={{borderTop:`1px solid ${T.border}`,color:T.text3}}>
-          Showing 30 of {rows.length} assets
+        <div className="px-4 py-2.5 flex items-center justify-between text-xs" style={{borderTop:`1px solid ${T.border}`,color:T.text3}}>
+          <span>Showing {rows.length} of {filteredAssets.length} assets</span>
+          <div className="flex items-center gap-2">
+              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="btn-ghost p-1 disabled:opacity-50">
+                  Previous
+              </button>
+              <span>Page {currentPage} of {totalPages}</span>
+              <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages || totalPages === 0} className="btn-ghost p-1 disabled:opacity-50">
+                  Next
+              </button>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// ── Employee Availability Table ───────────────────────────────────────────
-function EmployeeAvailabilityTable({ employees, projects, searchDate }) {
-  const rows = useMemo(() => employees.map(e => {
-    const avail = isEmployeeAvailable(e, searchDate, searchDate, projects);
-    const expiredCerts = (e.certFields||[]).filter(c=>{
-      if (!c.expiry) return false;
-      return isBefore(parseISO(c.expiry), searchDate);
+function CertStatusCell({ cert }) {
+  if (!cert || !cert.expiry) {
+    return <span className="text-xs" style={{color:T.text3}}>N/A</span>;
+  }
+  const days = differenceInDays(parseISO(cert.expiry), today());
+  const color = days < 0 ? '#ef4444' : days < 30 ? '#f59e0b' : '#22c55e';
+  const text = days < 0 ? `EXPIRED` : `in ${days}d`;
+
+  return (
+    <div>
+      <div className="text-xs font-medium" style={{color}}>{format(parseISO(cert.expiry), 'dd MMM yyyy')}</div>
+      <div className="text-[10px]" style={{color}}>{text}</div>
+    </div>
+  );
+}
+
+function EmployeeAvailabilityTable({ employees, searchDate }) {
+  const [search, setSearch] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState('All');
+  const [availabilityFilter, setAvailabilityFilter] = useState('All');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 30;
+
+  const departments = useMemo(() => ['All', ...new Set(employees.map(e => e.department).filter(Boolean))], [employees]);
+  const availabilities = ['All', 'Available', 'Assigned', 'On Leave', 'Training'];
+
+  const filteredEmployees = useMemo(() => {
+    return employees.filter(e => {
+      if (departmentFilter !== 'All' && e.department !== departmentFilter) return false;
+      if (availabilityFilter !== 'All' && e.availability !== availabilityFilter) return false;
+      if (search) {
+          const lowerSearch = search.toLowerCase();
+          return e.name?.toLowerCase().includes(lowerSearch) ||
+                 e.position?.toLowerCase().includes(lowerSearch);
+      }
+      return true;
     });
-    const expiringSoon = (e.certFields||[]).filter(c=>{
-      if (!c.expiry) return false;
-      const d = differenceInDays(parseISO(c.expiry), today());
-      return d >= 0 && d <= 30;
+  }, [employees, search, departmentFilter, availabilityFilter]);
+
+  const totalPages = Math.ceil(filteredEmployees.length / ITEMS_PER_PAGE);
+  const paginatedEmployees = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredEmployees.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredEmployees, currentPage]);
+
+
+  const rows = useMemo(() => paginatedEmployees.map(e => {
+    const avail = isEmployeeAvailable(e, searchDate, searchDate);
+    const allCerts = e.certFields || [];
+    
+    const bosietCert = allCerts.find(c => c.label.toLowerCase() === 'bosiet');
+    const medicalCert = allCerts.find(c => c.label.toLowerCase() === 'medical');
+    
+    const otherCerts = allCerts.filter(c => c.label.toLowerCase() !== 'bosiet' && c.label.toLowerCase() !== 'medical');
+
+    const expiredCerts = otherCerts.filter(c => c.expiry && isBefore(parseISO(c.expiry), searchDate));
+    const expiringSoon = otherCerts.filter(c => {
+        if (!c.expiry) return false;
+        const d = differenceInDays(parseISO(c.expiry), today());
+        return d >= 0 && d <= 30;
     });
-    return { ...e, avail, expiredCerts, expiringSoon };
-  }), [employees, projects, searchDate]);
+
+    return { ...e, avail, expiredCerts, expiringSoon, bosietCert, medicalCert };
+  }), [paginatedEmployees, searchDate]);
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label:'Available on date', value:rows.filter(r=>r.avail.ok).length,       color:'#22c55e' },
-          { label:'Assigned / Away',   value:rows.filter(r=>!r.avail.ok).length,      color:'#ef4444' },
-          { label:'Cert expiring ≤30d',value:rows.filter(r=>r.expiringSoon.length>0).length, color:'#f59e0b' },
-        ].map(k=>(
-          <div key={k.label} className="kpi-card py-3">
-            <div className="text-xl font-bold" style={{color:k.color}}>{k.value}</div>
-            <div className="text-xs" style={{color:T.text3}}>{k.label}</div>
+      <div className="flex flex-wrap gap-3">
+          <div className="flex-1 min-w-[200px]">
+              <label className="text-xs block mb-1" style={{color:T.text3}}>Search Name/Position</label>
+              <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: T.text3 }} />
+                  <input value={search} onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
+                  placeholder={`Search ${employees.length} employees...`}
+                  className="input-field pl-9" />
+              </div>
           </div>
-        ))}
+          <div>
+              <label className="text-xs block mb-1" style={{color:T.text3}}>Department</label>
+              <select value={departmentFilter} onChange={e => { setDepartmentFilter(e.target.value); setCurrentPage(1); }} className="select-field w-44">
+                  {departments.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+          </div>
+          <div>
+              <label className="text-xs block mb-1" style={{color:T.text3}}>Availability</label>
+              <select value={availabilityFilter} onChange={e => { setAvailabilityFilter(e.target.value); setCurrentPage(1); }} className="select-field w-44">
+                  {availabilities.map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
+          </div>
       </div>
 
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="data-table">
             <thead>
-              <tr><th>Name</th><th>Position</th><th>Current Assignment</th><th>Cert Alerts</th><th>On {format(searchDate,'dd MMM')}?</th></tr>
+              <tr>
+                <th>Name</th>
+                <th>Position</th>
+                <th>BOSIET</th>
+                <th>Medical</th>
+                <th>Other Certs</th>
+                <th>On {format(searchDate,'dd MMM')}?</th>
+              </tr>
             </thead>
             <tbody>
               {rows.map(emp=>{
-                const proj = projects.find(p=>p.id===emp.currentProject);
+                const currentAssignment = (emp.schedule || []).find(s => !s.endDate);
                 return (
                   <tr key={emp.id}>
                     <td>
@@ -337,13 +485,8 @@ function EmployeeAvailabilityTable({ employees, projects, searchDate }) {
                       <div className="text-[10px]" style={{color:T.text3}}>{emp.department}</div>
                     </td>
                     <td className="text-xs" style={{color:T.text2}}>{emp.position}</td>
-                    <td className="text-xs" style={{color:T.text2}}>
-                      {proj ? (
-                        <span className="text-blue-500">{proj.name?.substring(0,28)}</span>
-                      ) : (
-                        <span style={{color:T.text3}}>—</span>
-                      )}
-                    </td>
+                    <td><CertStatusCell cert={emp.bosietCert} /></td>
+                    <td><CertStatusCell cert={emp.medicalCert} /></td>
                     <td>
                       {emp.expiredCerts.length > 0 && (
                         <div className="text-[10px] text-red-500">
@@ -356,7 +499,7 @@ function EmployeeAvailabilityTable({ employees, projects, searchDate }) {
                         </div>
                       )}
                       {emp.expiredCerts.length===0 && emp.expiringSoon.length===0 && (
-                        <span className="text-[10px] text-green-500">All certs OK</span>
+                        <span className="text-[10px] text-green-500">OK</span>
                       )}
                     </td>
                     <td>
@@ -373,22 +516,31 @@ function EmployeeAvailabilityTable({ employees, projects, searchDate }) {
             </tbody>
           </table>
         </div>
-        <div className="px-4 py-2.5 text-xs" style={{borderTop:`1px solid ${T.border}`,color:T.text3}}>
-          {rows.length} employees
+        <div className="px-4 py-2.5 flex items-center justify-between text-xs" style={{borderTop:`1px solid ${T.border}`,color:T.text3}}>
+          <span>Showing {rows.length} of {filteredEmployees.length} employees</span>
+           <div className="flex items-center gap-2">
+              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="btn-ghost p-1 disabled:opacity-50">
+                  Previous
+              </button>
+              <span>Page {currentPage} of {totalPages}</span>
+              <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages || totalPages === 0} className="btn-ghost p-1 disabled:opacity-50">
+                  Next
+              </button>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────
 export default function ResourcePlanningPage() {
   const [assets,    setAssets]    = useState([]);
   const [projects,  setProjects]  = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading,   setLoading]   = useState(true);
+  const navigate = useNavigate();
 
-  const [tab,       setTab]       = useState('checker');   // checker | equipment | manpower
+  const [tab,       setTab]       = useState('manpower');
   const [searchDate,setSearchDate]= useState(format(addDays(today(),7),'yyyy-MM-dd'));
   const [selProject,setSelProject]= useState('');
 
@@ -396,7 +548,9 @@ export default function ResourcePlanningPage() {
     (async()=>{
       const [a,p,e] = await Promise.all([assetsService.getAll(),projectsService.getAll(),employeesService.getAll()]);
       setAssets(a); setProjects(p); setEmployees(e);
-      if (p.length>0) setSelProject(p.find(x=>x.status==='Preparing'||x.status==='Planned')?.id || p[0]?.id || '');
+      const plannedOrPreparing = p.find(x=>x.status==='Preparing'||x.status==='Planned');
+      if(plannedOrPreparing) setSelProject(plannedOrPreparing.id);
+      else if (p.length > 0) setSelProject(p[0].id);
       setLoading(false);
     })();
   },[]);
@@ -405,31 +559,34 @@ export default function ResourcePlanningPage() {
   const selProj = projects.find(p=>p.id===selProject);
 
   const tabs = [
-    { id:'checker',   label:'Project Readiness Checker', icon: Zap },
+    { id:'checker',   label:'Project Gap Analysis', icon: Zap },
     { id:'equipment', label:'Equipment Availability',    icon: Package },
     { id:'manpower',  label:'Manpower Availability',     icon: Users },
   ];
 
+  const handleGoToProjects = () => {
+    const projPath = selProj ? `/projects?edit=${selProj.id}` : '/projects';
+    navigate(projPath);
+  }
+
   return (
     <div className="space-y-5 animate-fade-in">
-      {/* Header */}
       <div>
         <h1 className="section-title flex items-center gap-2">
           <CalendarDays className="w-5 h-5 text-orange-500"/>Resource Planning & Availability
         </h1>
         <p className="text-xs mt-1" style={{color:T.text3}}>
-          ตรวจสอบ availability ของอุปกรณ์และพนักงาน — conflict detection อัตโนมัติ
+          Perform gap analysis for projects and check overall resource availability.
         </p>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-1 rounded-lg p-1 w-fit" style={{background:T.bg2,border:`1px solid ${T.border}`}}>
         {tabs.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)}
             className={clsx('flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
               tab===t.id?'bg-orange-600 text-white':'')}
             style={tab!==t.id?{color:T.text3}:{}}>
-            <t.icon className="w-3.5 h-3.5"/>
+            <t.icon className="w-3.h-3.5"/>
             {t.label}
           </button>
         ))}
@@ -441,12 +598,10 @@ export default function ResourcePlanningPage() {
         </div>
       ) : tab === 'checker' ? (
 
-        /* ── PROJECT READINESS CHECKER ── */
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          {/* Project selector */}
           <div className="space-y-3">
             <div className="text-xs font-semibold uppercase tracking-wider" style={{color:T.text3}}>
-              เลือก Project
+              Select Project
             </div>
             <div className="space-y-1.5 max-h-[70vh] overflow-y-auto pr-1">
               {projects
@@ -486,7 +641,6 @@ export default function ResourcePlanningPage() {
             </div>
           </div>
 
-          {/* Checker panel */}
           <div className="lg:col-span-2 card p-5">
             {selProj ? (
               <>
@@ -496,16 +650,18 @@ export default function ResourcePlanningPage() {
                     {selProj.clientName} · {selProj.siteLocation} · Mob: {selProj.mobilizationDate||selProj.startDate||'TBD'}
                   </p>
                 </div>
-                <ProjectChecker
+                <GapAnalysis
                   project={selProj}
                   assets={assets}
                   employees={employees}
-                  allProjects={projects}
+                  onGoToProjects={handleGoToProjects}
                 />
               </>
             ) : (
-              <div className="flex items-center justify-center h-48 text-sm" style={{color:T.text3}}>
-                เลือก Project ทางซ้ายเพื่อตรวจสอบ resource availability
+              <div className="flex flex-col items-center justify-center h-48 text-sm text-center" style={{color:T.text3}}>
+                <Zap className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                <h3 className="font-semibold" style={{color: T.text}}>Project Gap Analysis</h3>
+                <p>Select a project from the list on the left to perform a gap analysis on its requirements.</p>
               </div>
             )}
           </div>
@@ -513,7 +669,6 @@ export default function ResourcePlanningPage() {
 
       ) : tab === 'equipment' ? (
 
-        /* ── EQUIPMENT AVAILABILITY ── */
         <div className="space-y-4">
           <div className="flex items-center gap-3 flex-wrap">
             <div>
@@ -524,12 +679,11 @@ export default function ResourcePlanningPage() {
               {differenceInDays(parsedDate,today())} days from today
             </div>
           </div>
-          <AssetAvailabilityTable assets={assets} projects={projects} searchDate={parsedDate}/>
+          <AssetAvailabilityTable assets={assets} searchDate={parsedDate}/>
         </div>
 
       ) : (
 
-        /* ── MANPOWER AVAILABILITY ── */
         <div className="space-y-4">
           <div className="flex items-center gap-3 flex-wrap">
             <div>
@@ -540,7 +694,7 @@ export default function ResourcePlanningPage() {
               {differenceInDays(parsedDate,today())} days from today
             </div>
           </div>
-          <EmployeeAvailabilityTable employees={employees} projects={projects} searchDate={parsedDate}/>
+          <EmployeeAvailabilityTable employees={employees} searchDate={parsedDate}/>
         </div>
 
       )}
