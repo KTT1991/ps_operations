@@ -10,6 +10,91 @@ const ALERT_STYLES = {
   info: { border: 'border-blue-700/60', bg: 'bg-blue-900/20', text: 'text-blue-400', dot: 'bg-blue-500', Icon: Clock },
 };
 
+function PersonnelDeploymentView({ employees, projects }) {
+  const deployedPersonnel = employees.filter(
+    e => e.availability === 'Assigned' || e.availability === 'Offshore'
+  );
+
+  if (deployedPersonnel.length === 0) {
+    return (
+      <div className="card p-8 text-center text-[var(--t-text3)] text-sm">
+        <Users className="w-12 h-12 mx-auto mb-4 opacity-20" />
+        No personnel are currently deployed.
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+      {deployedPersonnel.map(emp => {
+        const latestSchedule = emp.schedule && emp.schedule.length > 0 ? emp.schedule[0] : null;
+        const project = latestSchedule ? projects.find(p => p.id === latestSchedule.projectId) : null;
+
+        return (
+          <EmployeeDeploymentCard
+            key={emp.id}
+            employee={emp}
+            project={project}
+            schedule={latestSchedule}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function EmployeeDeploymentCard({ employee, project, schedule }) {
+    const hasCriticalCerts = (employee.certFields || []).some(c => c.expiry && differenceInDays(parseISO(c.expiry), new Date()) < 30);
+    const location = schedule?.location || 'N/A';
+    const locationColor = location === 'Offshore' ? 'text-cyan-400' : 'text-blue-400';
+
+    return (
+        <div className="card p-4 space-y-3 flex flex-col">
+            <div className="flex items-start justify-between">
+                <div>
+                    <div className="font-semibold text-sm">{employee.name}</div>
+                    <div className="text-xs text-[var(--t-text3)]">{employee.position}</div>
+                </div>
+                <div className={clsx('flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded', location === 'Offshore' ? 'bg-cyan-900/30 text-cyan-400' : 'bg-blue-900/30 text-blue-400')}>
+                    <MapPin className="w-3 h-3" />
+                    {location}
+                </div>
+            </div>
+
+            <div className="bg-[var(--t-bg3)] p-3 rounded-lg flex-grow">
+                <div className="text-xs text-[var(--t-text3)] mb-1">Current Assignment</div>
+                {project ? (
+                  <>
+                    <div className="font-medium text-sm text-[var(--t-text)]">{project.name}</div>
+                    <div className="text-xs text-slate-500 mt-0.5">{project.projectNo}</div>
+                  </>
+                ) : (
+                    <div className="text-center text-xs text-[var(--t-text3)] py-2">
+                       No active assignment data.
+                    </div>
+                )}
+            </div>
+
+            {schedule && (
+                 <div>
+                    <div className="text-xs font-mono text-slate-500">
+                        {format(parseISO(schedule.startDate), 'dd MMM yyyy')}
+                        {schedule.endDate ? ` → ${format(parseISO(schedule.endDate), 'dd MMM yyyy')}` : ' → Present'}
+                    </div>
+                     {schedule.details && <div className="text-xs text-slate-400 mt-1">Role: {schedule.details}</div>}
+                 </div>
+            )}
+
+            {hasCriticalCerts && (
+                <div className="flex items-center gap-2 text-xs text-amber-400 border-t border-amber-800/50 pt-2 mt-auto">
+                    <AlertTriangle className="w-4 h-4" />
+                    Certificate expiring soon.
+                </div>
+            )}
+        </div>
+    );
+}
+
 function EquipmentStatusBadge({ status }) {
   const map = {
     Available: 'bg-green-500/20 text-green-400 border-green-700/50',
@@ -184,9 +269,7 @@ export default function OperationsPage() {
 
   const activeProjects = projects.filter(p => ['Active', 'Mobilizing'].includes(p.status));
   const preparingProjects = projects.filter(p => p.status === 'Preparing');
-  const plannedProjects = projects.filter(p => p.status === 'Planned');
 
-  // Upcoming: assets returning in next 14 days
   const returningAssets = assets.filter(a => {
     if (!a.availableDate || a.status === 'Available') return false;
     const days = differenceInDays(parseISO(a.availableDate), new Date());
@@ -253,7 +336,6 @@ export default function OperationsPage() {
         </div>
       ) : activeTab === 'overview' ? (
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          {/* Active Projects */}
           <div className="xl:col-span-2 space-y-4">
             <div>
               <h2 className="text-sm font-semibold text-[var(--t-text2)] flex items-center gap-2 mb-3">
@@ -285,7 +367,6 @@ export default function OperationsPage() {
               </div>
             )}
 
-            {/* Returning equipment */}
             {returningAssets.length > 0 && (
               <div className="card">
                 <div className="card-header">
@@ -317,7 +398,6 @@ export default function OperationsPage() {
             )}
           </div>
 
-          {/* Alerts panel */}
           <div className="space-y-3">
             <h2 className="text-sm font-semibold text-[var(--t-text2)] flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-500" />
@@ -360,82 +440,9 @@ export default function OperationsPage() {
           </div>
           <EquipmentAllocationBoard assets={assets} />
         </div>
-      ) : (
-        <div className="card overflow-hidden">
-          <div className="card-header">
-            <h3 className="font-medium text-[var(--t-text)]">Personnel Deployment Status</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Position</th>
-                  <th>Status</th>
-                  <th>Current Project</th>
-                  <th>Rotation</th>
-                  <th>Offshore Cert</th>
-                  <th><HUET></HUET></th>
-                  <th>Utilization</th>
-                </tr>
-              </thead>
-              <tbody>
-                {employees.map(emp => {
-                  const project = projects.find(p => p.id === emp.currentProject);
-                  const offDays = emp.offshoreExpiry ? differenceInDays(parseISO(emp.offshoreExpiry), new Date()) : null;
-                  const huetDays = emp.huetExpiry ? differenceInDays(parseISO(emp.huetExpiry), new Date()) : null;
-                  const availCfg = { Available: 'text-green-400', Assigned: 'text-blue-400', Offshore: 'text-cyan-400', 'On Leave': 'text-amber-400', Training: 'text-purple-400' };
-                  return (
-                    <tr key={emp.id}>
-                      <td>
-                        <div className="font-medium text-[var(--t-text)] text-sm">{emp.name}</div>
-                        <div className="text-xs text-[var(--t-text3)]">{emp.id}</div>
-                      </td>
-                      <td><span className="text-sm text-[var(--t-text3)]">{emp.position}</span></td>
-                      <td>
-                        <span className={clsx('text-sm font-medium', availCfg[emp.availability] || 'text-[var(--t-text3)]')}>
-                          {emp.availability}
-                        </span>
-                      </td>
-                      <td>
-                        {project ? (
-                          <div>
-                            <div className="text-sm text-[var(--t-text2)] max-w-[160px] truncate">{project.name}</div>
-                            <div className="text-xs text-[var(--t-text3)]">{project.id}</div>
-                          </div>
-                        ) : <span className="text-[var(--t-text3)]">—</span>}
-                      </td>
-                      <td><span className="text-sm text-[var(--t-text3)]">{emp.rotation}</span></td>
-                      <td>
-                        {offDays !== null ? (
-                          <span className={clsx('text-xs', offDays < 0 ? 'text-red-400 font-medium' : offDays < 30 ? 'text-amber-400' : 'text-[var(--t-text3)]')}>
-                            {offDays < 0 ? 'EXPIRED' : `${offDays}d`}
-                          </span>
-                        ) : <span className="text-[var(--t-text3)]">—</span>}
-                      </td>
-                      <td>
-                        {huetDays !== null ? (
-                          <span className={clsx('text-xs', huetDays < 0 ? 'text-red-400 font-medium' : huetDays < 30 ? 'text-amber-400' : 'text-[var(--t-text3)]')}>
-                            {huetDays < 0 ? 'EXPIRED' : `${huetDays}d`}
-                          </span>
-                        ) : <span className="text-[var(--t-text3)]">—</span>}
-                      </td>
-                      <td>
-                        <div className="flex items-center gap-2">
-                          <div className="w-14 progress-bar">
-                            <div className="progress-fill" style={{ width: `${emp.utilization}%`, background: emp.utilization > 90 ? '#ef4444' : emp.utilization > 70 ? '#f59e0b' : '#22c55e' }} />
-                          </div>
-                          <span className="text-xs text-[var(--t-text3)]">{emp.utilization}%</span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      ) : activeTab === 'deployment' ? (
+        <PersonnelDeploymentView employees={employees} projects={projects} />
+      ) : null}
     </div>
   );
 }
