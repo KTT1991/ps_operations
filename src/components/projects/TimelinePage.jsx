@@ -66,7 +66,7 @@ export default function TimelinePage() {
     const e = p.endDate ? parseISO(p.endDate) : null;
     if (!s || !e) return true;
     return s < viewEnd && e > viewStart;
-  });
+  }).sort((a,b) => parseISO(a.startDate) - parseISO(b.startDate));
 
   const exportExcel = () => {
     const data = projects.map(p=>{
@@ -196,10 +196,10 @@ export default function TimelinePage() {
 
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
-          <div style={{minWidth:820}}>
-            <div className="flex border-b border-slate-700 bg-slate-800/50 sticky top-0 z-20">
-              <div className="flex-shrink-0 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-400"
-                style={{width:224, borderRight:'1px solid var(--t-border)'}}>
+          <div style={{minWidth:820, position: 'relative'}}>
+            <div className="flex border-b border-slate-700 bg-slate-800">
+              <div className="flex-shrink-0 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-400 bg-slate-800"
+                style={{width:224, borderRight:'1px solid var(--t-border)', position: 'sticky', left: 0, zIndex: 11}}>
                 Project
               </div>
               <div className="flex flex-1">
@@ -250,10 +250,10 @@ export default function TimelinePage() {
               return (
                 <div key={proj.id}
                   onClick={()=>{setSelected(proj);setShowModal(true);}}
-                  className="flex group cursor-pointer border-b border-slate-800 hover:bg-slate-800/40">
+                  className="flex group cursor-pointer border-b border-slate-800">
 
-                  <div className="flex-shrink-0 px-3 py-3"
-                    style={{width:224,borderRight:'1px solid var(--t-border)'}}>
+                  <div className="flex-shrink-0 px-3 py-3 bg-slate-900/90 backdrop-blur-sm group-hover:bg-slate-800/80 transition-colors"
+                    style={{width:224,borderRight:'1px solid var(--t-border)', position: 'sticky', left: 0, zIndex: 10}}>
                     <div className="font-medium text-xs leading-snug truncate text-slate-200 group-hover:text-orange-400 transition-colors" title={displayName}>
                       {displayName}
                     </div>
@@ -267,7 +267,7 @@ export default function TimelinePage() {
                     </div>
                   </div>
 
-                  <div className="flex-1 relative pr-2" style={{minHeight:56}}>
+                  <div className="flex-1 relative pr-2 group-hover:bg-slate-800/40" style={{minHeight:56}}>
                     {months.map((_,i)=> i>0 && (
                       <div key={i} className="absolute top-0 bottom-0 w-px bg-slate-700/50"
                         style={{left:`${(i/months.length)*100}%`}}/>
