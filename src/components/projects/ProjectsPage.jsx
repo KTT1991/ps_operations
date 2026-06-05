@@ -22,12 +22,10 @@ function ProjectCard({ project, assets, employees, onEdit }) {
   const daysLeft = project.endDate ? differenceInDays(parseISO(project.endDate), new Date()) : null;
   const pm = employees.find(e=>e.id===project.projectManager);
   
-  // FIX: Compare asset's `currentProject` field with the project's `projectNo` field.
   const assignedEquipment = assets.filter(a => a.currentProject === project.projectNo && a.status === 'In Use').length;
-  
-  // FIX: Assume employee schedules also use `projectNo` for consistency.
+
   const assignedManpower = employees.reduce((count, emp) => {
-      const isAssigned = (emp.schedule || []).some(s => s.projectId === project.projectNo && s.type === 'Assignment');
+      const isAssigned = (emp.schedule || []).some(s => s.projectNo === project.projectNo && s.type === 'Assignment');
       return count + (isAssigned ? 1 : 0);
   }, 0);
 
@@ -166,7 +164,7 @@ export default function ProjectsPage() {
             <ExternalLink className="w-3.5 h-3.5"/>Timeline View
           </button>
           <button onClick={()=>exportProjectsToExcel(filtered, employees)} className="btn-secondary text-xs">
-            <Download className="w-4 h-4"/>Excel
+            <Download className drawed='true'/>Excel
           </button>
           <button onClick={()=>{setSelected(null);setShowModal(true);}} className="btn-primary">
             <Plus className="w-4 h-4"/>Add Project

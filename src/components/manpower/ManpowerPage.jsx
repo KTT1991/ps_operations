@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import { Users, Plus, Search, Download, AlertTriangle, X, Trash2, History, Briefcase, Coffee, Wrench, BadgeCheck, UserCheck, Edit, MapPin } from 'lucide-react';
+import { Users, Plus, Search, Download, AlertTriangle, X, Trash2, History, Briefcase, Coffee, Wrench, BadgeCheck, UserCheck, Edit, MapPin, Calendar } from 'lucide-react';
 import { employeesService, projectsService, manpowerHistoryService } from '../../services/firebaseService';
 import { useAuth } from '../../contexts/AuthContext';
 import { exportManpowerToExcel } from '../../utils/exportUtils';
@@ -66,7 +66,7 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
         const selectedProject = projects.find(p => p.id === newEntry.projectId);
         if (selectedProject) {
             entryToAdd.projectNo = selectedProject.projectNo;
-            entryToAdd.projectName = selectedProject.name;
+            entryToAdd.projectName = selected.name;
         }
     }
     const updatedSchedule = [...(form.schedule || []), entryToAdd].sort((a, b) => isAfter(parseISO(a.startDate), parseISO(b.startDate)) ? -1 : 1);
@@ -447,6 +447,11 @@ function EmployeeCard({ emp, onClick, onSelect, selectionMode, isSelected }) {
     }
   };
 
+  // Find the latest assignment
+  const latestAssignment = (emp.schedule || [])
+    .filter(s => s.type === 'Assignment' && s.endDate)
+    .sort((a, b) => isAfter(parseISO(a.endDate), parseISO(b.endDate)) ? -1 : 1)[0];
+
   return (
     <div onClick={handleClick} 
         className={clsx("card p-4 space-y-3 transition-all relative",
@@ -473,6 +478,22 @@ function EmployeeCard({ emp, onClick, onSelect, selectionMode, isSelected }) {
          <div className="flex items-center justify-between text-xs text-[var(--t-text3)]">
             <span>{emp.department}</span>
         </div>
+
+        {latestAssignment && (
+            <div className="border-t border-slate-700/50 pt-3 mt-3 space-y-1.5 text-xs">
+                 <div className='font-semibold text-slate-400'>Latest Assignment</div>
+                 <div className='flex items-center gap-2'>
+                    <Briefcase className="w-3.5 h-3.5 text-slate-500 flex-shrink-0"/>
+                    <div className='truncate'>
+                        <span className='font-mono text-slate-500'>{latestAssignment.projectNo}</span> {latestAssignment.projectName}
+                    </div>
+                 </div>
+                 <div className='flex items-center gap-2'>
+                    <Calendar className="w-3.5 h-3.5 text-slate-500 flex-shrink-0"/>
+                    <span>Return: {format(parseISO(latestAssignment.endDate), 'dd MMM yyyy')}</span>
+                 </div>
+            </div>
+        )}
     </div>
   );
 }

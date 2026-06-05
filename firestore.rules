@@ -54,7 +54,7 @@ service cloud.firestore {
     // Employees
     match /employees/{empId} {
       allow read: if isAuthenticated();
-      allow create, update: if isOperationsManager();
+      allow create, update: if isAdmin();
       allow delete: if isAdmin();
     }
 
