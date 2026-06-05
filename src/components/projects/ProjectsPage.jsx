@@ -38,7 +38,7 @@ function ProjectCard({ project, assets, employees, onEdit }) {
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
-              <span className="text-xs font-mono text-slate-500">{project.projectNo || project.id}</span>
+              <span className="text-xs font-mono text-slate-500">{project.projectNo}</span>
               <span className={clsx('inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border',cfg.bdark)}>
                 <span className={clsx('w-1.5 h-1.5 rounded-full',cfg.dot)}/>
                 {project.status}
@@ -100,7 +100,7 @@ function ProjectCard({ project, assets, employees, onEdit }) {
             {Icon:Package, label:'Equipment', value: assignedEquipment},
             {Icon:Users,   label:'Manpower',  value: assignedManpower},
             {Icon:Calendar,label:'Budget',    value: project.budget ? `฿${(project.budget/1000000).toFixed(1)}M` : '—'},
-          ].map(({Icon,label,value})=>(
+          ].map(({Icon,label,value}) => (
             <div key={label} className="bg-slate-800/50 rounded-lg p-2 text-center">
               <Icon className="w-3.5 h-3.5 mx-auto mb-1 text-slate-500"/>
               <div className="font-bold text-slate-200">{value ?? '—'}</div>
@@ -124,19 +124,21 @@ export default function ProjectsPage() {
   const [selected,  setSelected]  = useState(null);
   const navigate = useNavigate();
 
-  const load = async () => {
+  useEffect(() => {
     setLoading(true);
-    const [p,a,e] = await Promise.all([
-      projectsService.getAll(),
-      assetsService.getAll(),
-      employeesService.getAll(),
-    ]);
-    setProjects(p.sort((x,y) => (x.startDate || '').localeCompare(y.startDate || ''))); 
-    setAssets(a); 
-    setEmployees(e);
-    setLoading(false);
-  };
-  useEffect(()=>{ load(); },[]);
+    const unsubProjects = projectsService.subscribe(data => {
+      setProjects(data.sort((x,y) => (x.startDate || '').localeCompare(y.startDate || '')));
+      setLoading(false); // Consider setting loading to false only after all data is loaded
+    });
+    const unsubAssets = assetsService.subscribe(data => setAssets(data));
+    const unsubEmployees = employeesService.subscribe(data => setEmployees(data));
+
+    return () => {
+      unsubProjects();
+      unsubAssets();
+      unsubEmployees();
+    };
+  }, []);
 
   const filtered = projects.filter(p=>{
     const s = search.toLowerCase();
@@ -219,8 +221,8 @@ export default function ProjectsPage() {
         <ProjectModal
           project={selected}
           employees={employees}
+          projects={projects}
           onClose={()=>setShowModal(false)}
-          onSave={load}
           onViewTimeline={handleViewTimeline}
         />
       )}

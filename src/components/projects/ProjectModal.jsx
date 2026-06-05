@@ -24,7 +24,7 @@ const EMPTY_FORM = {
   genericRequirements: [],
 };
 
-export default function ProjectModal({ project, employees, onClose, onSave, onViewTimeline }) {
+export default function ProjectModal({ project, employees, projects, onClose, onViewTimeline }) {
   const [form, setForm] = useState(project ? { ...(project.projectNo ? { ...project, projectNumber: project.projectNo } : project), genericRequirements: project.genericRequirements || [] } : { ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
   const [newReq, setNewReq] = useState({ item: '', quantity: 1, unit: 'ea' });
@@ -44,12 +44,19 @@ export default function ProjectModal({ project, employees, onClose, onSave, onVi
     if (!form.name || !form.clientName) { toast.error('Please enter Project name and Client.'); return; }
     setSaving(true);
     try {
+      if (!project?.id) {
+        const nameExists = projects.some(p => p.name.trim().toLowerCase() === form.name.trim().toLowerCase());
+        if (nameExists) {
+          toast.error("A project with this name already exists.");
+          setSaving(false);
+          return;
+        }
+      }
+
       const projectData = { ...form };
-      
       if (!projectData.projectNumber && !project) {
         projectData.projectNumber = `P${new Date().getFullYear().toString().slice(-2)}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
       }
-      
       delete projectData.projectNo;
 
       if (project?.id) {
@@ -59,14 +66,14 @@ export default function ProjectModal({ project, employees, onClose, onSave, onVi
         await projectsService.create(projectData);
         toast.success('Project added successfully.');
       }
-      onSave(); onClose();
+      onClose();
     } catch(e) { console.error(e); toast.error('Save failed.'); } finally { setSaving(false); }
   };
 
   const del = async () => {
     if (!project?.id || !confirm(`Delete "${form.name}"?`)) return;
     await projectsService.delete(project.id);
-    toast.success('Deleted successfully.'); onSave(); onClose();
+    toast.success('Deleted successfully.'); onClose();
   };
 
   return (

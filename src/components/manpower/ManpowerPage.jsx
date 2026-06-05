@@ -25,8 +25,8 @@ const SCHEDULE_TYPE_CONFIG = {
 const LOCATION_OPTIONS = ['Onshore', 'Offshore', 'Yard', 'Home', 'Training Center', 'Other'];
 const DEFAULT_CERTS = ['BOSIET', 'H2S Safety', 'Medical', 'Offshore Survival', 'CompEx', 'CSWIP', 'PMP'];
 
-function EmployeeModal({ employee, projects, onClose, onSave }) {
-  const { user, isAdmin } = useAuth(); // Get user and isAdmin flag
+function EmployeeModal({ employee, employees, projects, onClose }) {
+  const { user, isAdmin } = useAuth();
   const [form, setForm] = useState(employee || {
     name:'', position:'', department:'', email:'', phone:'',
     availability:'Available', utilization:0,
@@ -41,9 +41,13 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
       projectId: '',
       details: '',
       location: 'Onshore',
-      startDate: format(new Date(), 'yyyy-MM-dd'),
+      startDate: '',
       endDate: '',
   });
+
+  const isAddScheduleDisabled = newEntry.type === 'Assignment'
+    ? !newEntry.projectId || !newEntry.details || !newEntry.startDate || !newEntry.endDate
+    : !newEntry.details || !newEntry.startDate || !newEntry.endDate;
 
   const handleFormChange = (e) => setForm(f => ({...f, [e.target.name]: e.target.value}));
 
@@ -57,21 +61,17 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
   const updateCert = (index, field, value) => setCerts(c => c.map((cert, i) => i === index ? {...cert, [field]: value} : cert));
 
   const addScheduleEntry = () => {
-    if (!newEntry.startDate || (newEntry.type === 'Assignment' && !newEntry.projectId)) {
-        toast.error("Please select a project and a start date.");
-        return;
-    }
     let entryToAdd = { ...newEntry };
     if (newEntry.type === 'Assignment') {
         const selectedProject = projects.find(p => p.id === newEntry.projectId);
         if (selectedProject) {
             entryToAdd.projectNo = selectedProject.projectNo;
-            entryToAdd.projectName = selected.name;
+            entryToAdd.projectName = selectedProject.name;
         }
     }
     const updatedSchedule = [...(form.schedule || []), entryToAdd].sort((a, b) => isAfter(parseISO(a.startDate), parseISO(b.startDate)) ? -1 : 1);
     setForm(f => ({ ...f, schedule: updatedSchedule }));
-    setNewEntry({ type: 'Assignment', projectId: '', details: '', location:'Onshore', startDate: format(new Date(), 'yyyy-MM-dd'), endDate: '' });
+    setNewEntry({ type: 'Assignment', projectId: '', details: '', location:'Onshore', startDate: '', endDate: '' });
   }
 
   const getChanges = (original, updated, updatedCerts) => {
@@ -95,43 +95,51 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
     if (!isAdmin) return toast.error("You don't have permission to save.");
     if (!form.name || !form.position) return toast.error('Name and position are required.');
     setSaving(true);
+    
     try {
-        const finalData = { ...form, certFields: certs };
-        let docId = employee?.id;
-
-        if (docId) {
-            const changes = getChanges(employee, finalData, certs);
-            if (changes.length > 0) {
-              await employeesService.update(docId, finalData);
-              await manpowerHistoryService.create({
-                refId: docId,
-                refNo: finalData.name,
-                activityType: 'Update Profile',
-                timestamp: new Date(),
-                modifiedBy: user?.displayName || user?.email || 'System',
-                changes: changes,
-              });
-              toast.success('Employee updated!');
-            } else {
-              toast.success('No changes to save.');
-            }
-        } else {
-            const newEmployee = await employeesService.create(finalData);
-            docId = newEmployee.id;
-            await manpowerHistoryService.create({
-              refId: docId,
-              refNo: finalData.name,
-              activityType: 'Create Profile',
-              timestamp: new Date(),
-              modifiedBy: user?.displayName || user?.email || 'System',
-              changes: [{ field: 'profile', oldValue: 'N/A', newValue: 'Created' }],
-            });
-            toast.success('Employee added!');
+      if (!employee?.id) {
+        const nameExists = employees.some(e => e.name.trim().toLowerCase() === form.name.trim().toLowerCase());
+        if (nameExists) {
+          toast.error("An employee with this name already exists.");
+          setSaving(false);
+          return;
         }
-        onSave(); 
-        onClose();
+      }
+
+      const finalData = { ...form, certFields: certs };
+      let docId = employee?.id;
+      let isNew = !docId;
+
+      if (isNew) {
+        const newEmployee = await employeesService.create(finalData);
+        docId = newEmployee.id;
+        toast.success('Employee added!');
+      } else {
+        await employeesService.update(docId, finalData);
+        toast.success('Employee updated!');
+      }
+      
+      // Separate history logging
+      try {
+          const changes = isNew ? [{ field: 'profile', oldValue: 'N/A', newValue: 'Created' }] : getChanges(employee, finalData, certs);
+          if (changes.length > 0) {
+              await manpowerHistoryService.create({
+                  refId: docId,
+                  refNo: finalData.name,
+                  activityType: isNew ? 'Create Profile' : 'Update Profile',
+                  timestamp: new Date(),
+                  modifiedBy: user?.displayName || user?.email || 'System',
+                  changes: changes,
+              });
+          }
+      } catch (historyError) {
+          console.error("Failed to log history:", historyError);
+          toast.error("Couldn't log history, but main data was saved.");
+      }
+
+      onClose();
     } catch (e) { 
-        toast.error('Failed to save.'); 
+        toast.error('Failed to save employee data.'); 
         console.error(e); 
     }
     finally { setSaving(false); }
@@ -151,7 +159,7 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
             changes: [{ field: 'profile', oldValue: 'Active', newValue: 'Deleted' }],
         });
         toast.success('Employee deleted.');
-        onSave(); onClose();
+        onClose();
     } catch (e) { toast.error('Failed to delete.'); console.error(e); }
   }
 
@@ -164,7 +172,6 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
               <button onClick={onClose} className="btn-ghost p-1"><X className="w-4 h-4" /></button>
           </div>
           <div className="p-5 space-y-6">
-              {/* Form content is the same, but read-only if not admin */}
               <fieldset disabled={!isAdmin} className="contents">
                   <div>
                       <h3 className="text-xs font-semibold text-[var(--t-text3)] uppercase mb-3">Basic Information</h3>
@@ -261,13 +268,13 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
                                           </select>
                                       </div>
                                       <div className="col-span-2">
-                                          <label className="text-xs block mb-1 text-[var(--t-text3)]">Notes / Role</label>
+                                          <label className="text-xs block mb-1 text-[var(--t-text3)]">Notes / Role *</label>
                                           <input value={newEntry.details} onChange={e => setNewEntry({...newEntry, details: e.target.value})} placeholder="e.g., Onshore Supervisor" className="input-field text-sm" />
                                       </div>
                                   </>
                               ) : (
                                   <div className="col-span-2">
-                                       <label className="text-xs block mb-1 text-[var(--t-text3)]">Details</label>
+                                       <label className="text-xs block mb-1 text-[var(--t-text3)]">Details *</label>
                                        <input value={newEntry.details} onChange={e => setNewEntry({...newEntry, details: e.target.value})} placeholder="e.g., Annual Leave" className="input-field text-sm" />
                                   </div>
                               )}
@@ -280,15 +287,21 @@ function EmployeeModal({ employee, projects, onClose, onSave }) {
                                </div>
 
                                <div>
-                                   <label className="text-xs block mb-1 text-[var(--t-text3)]">Start Date</label>
+                                   <label className="text-xs block mb-1 text-[var(--t-text3)]">Start Date *</label>
                                    <input type="date" value={newEntry.startDate} onChange={e => setNewEntry({...newEntry, startDate: e.target.value})} className="input-field text-sm" />
                                </div>
                                <div>
-                                   <label className="text-xs block mb-1 text-[var(--t-text3)]">End Date</label>
+                                   <label className="text-xs block mb-1 text-[var(--t-text3)]">End Date *</label>
                                    <input type="date" value={newEntry.endDate} onChange={e => setNewEntry({...newEntry, endDate: e.target.value})} className="input-field text-sm" />
                                </div>
                                <div className="col-span-2 mt-1">
-                                   <button onClick={addScheduleEntry} className="btn-secondary w-full text-xs">Add to Schedule</button>
+                                    <button 
+                                        onClick={addScheduleEntry} 
+                                        disabled={isAddScheduleDisabled}
+                                        className={clsx("btn-primary w-full text-xs", { "opacity-50 cursor-not-allowed": isAddScheduleDisabled })}
+                                    >
+                                        Add to Schedule
+                                    </button>
                                </div>
                            </div>
                       </div>
@@ -352,7 +365,6 @@ function BulkScheduleModal({ selectedEmpIds, employees, onClose, onSave, project
 
             await Promise.all(updates);
             toast.success(`${selectedEmployees.length} employees updated successfully!`, { id: toastId });
-            onSave();
             onClose();
         } catch (e) {
             console.error('Bulk schedule update failed:', e);
@@ -395,13 +407,13 @@ function BulkScheduleModal({ selectedEmpIds, employees, onClose, onSave, project
                                 </select>
                             </div>
                             <div className='col-span-2'>
-                                <label className="text-xs block mb-1 text-[var(--t-text3)]">Notes / Role</label>
+                                <label className="text-xs block mb-1 text-[var(--t-text3)]">Notes / Role *</label>
                                 <input value={newEntry.details} onChange={e => setNewEntry(s => ({...s, details: e.target.value}))} className="input-field text-sm" placeholder='e.g., Onshore Supervisor' />
                             </div>
                           </>
                         ) : (
                            <div className='col-span-2'>
-                                <label className="text-xs block mb-1 text-[var(--t-text3)]">Details</label>
+                                <label className="text-xs block mb-1 text-[var(--t-text3)]">Details *</label>
                                 <input value={newEntry.details} onChange={e => setNewEntry(s => ({...s, details: e.target.value}))} className="input-field text-sm" placeholder='e.g., Annual Leave' />
                            </div>
                         )}
@@ -414,11 +426,11 @@ function BulkScheduleModal({ selectedEmpIds, employees, onClose, onSave, project
                         </div>
                         
                         <div>
-                             <label className="text-xs block mb-1 text-[var(--t-text3)]">Start Date</label>
+                             <label className="text-xs block mb-1 text-[var(--t-text3)]">Start Date *</label>
                              <input type="date" value={newEntry.startDate} onChange={e => setNewEntry(s => ({...s, startDate: e.target.value}))} className="input-field text-sm" />
                         </div>
                         <div>
-                             <label className="text-xs block mb-1 text-[var(--t-text3)]">End Date</label>
+                             <label className="text-xs block mb-1 text-[var(--t-text3)]">End Date *</label>
                              <input type="date" value={newEntry.endDate} onChange={e => setNewEntry(s => ({...s, endDate: e.target.value}))} className="input-field text-sm" />
                         </div>
                     </div>
@@ -443,11 +455,10 @@ function EmployeeCard({ emp, onClick, onSelect, selectionMode, isSelected }) {
     if (selectionMode) {
         onSelect(emp.id);
     } else if (isAdmin) {
-        onClick(); // Only allow opening the modal if admin
+        onClick();
     }
   };
 
-  // Find the latest assignment
   const latestAssignment = (emp.schedule || [])
     .filter(s => s.type === 'Assignment' && s.endDate)
     .sort((a, b) => isAfter(parseISO(a.endDate), parseISO(b.endDate)) ? -1 : 1)[0];
@@ -490,7 +501,9 @@ function EmployeeCard({ emp, onClick, onSelect, selectionMode, isSelected }) {
                  </div>
                  <div className='flex items-center gap-2'>
                     <Calendar className="w-3.5 h-3.5 text-slate-500 flex-shrink-0"/>
-                    <span>Return: {format(parseISO(latestAssignment.endDate), 'dd MMM yyyy')}</span>
+                    {latestAssignment.startDate && latestAssignment.endDate ? (
+                        <span>{format(parseISO(latestAssignment.startDate), 'dd MMM yyyy')} → {format(parseISO(latestAssignment.endDate), 'dd MMM yyyy')}</span>
+                    ) : null}
                  </div>
             </div>
         )}
@@ -499,7 +512,7 @@ function EmployeeCard({ emp, onClick, onSelect, selectionMode, isSelected }) {
 }
 
 export default function ManpowerPage() {
-  const { isAdmin } = useAuth(); // Get isAdmin flag
+  const { isAdmin } = useAuth();
   const [employees, setEmployees] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -510,15 +523,21 @@ export default function ManpowerPage() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedEmpIds, setSelectedEmpIds] = useState([]);
 
-  const load = async () => {
+  useEffect(() => {
     setLoading(true);
-    setSelectionMode(false); setSelectedEmpIds([]);
-    const [e, p] = await Promise.all([employeesService.getAll(), projectsService.getAll()]);
-    setEmployees(e.sort((a,b) => a.name.localeCompare(b.name))); 
-    setProjects(p.sort((a,b) => (a.projectNo || a.id).localeCompare(b.projectNo || b.id)));
-    setLoading(false);
-  };
-  useEffect(() => { load(); }, []);
+    const unsubEmployees = employeesService.subscribe(data => {
+      setEmployees(data.sort((a,b) => a.name.localeCompare(b.name)));
+      setLoading(false);
+    });
+    const unsubProjects = projectsService.subscribe(data => {
+      setProjects(data.sort((a,b) => (a.projectNo || a.id).localeCompare(b.projectNo || b.id)));
+    });
+
+    return () => {
+      unsubEmployees();
+      unsubProjects();
+    };
+  }, []);
   
   const handleSelectEmployee = (id) => {
       setSelectedEmpIds(ids => ids.includes(id) ? ids.filter(i => i !== id) : [...ids, id]);
@@ -561,7 +580,6 @@ export default function ManpowerPage() {
         </div>
       </div>
 
-      {/* KPI Cards and Search remain the same */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
          {Object.entries(AVAILABILITY_CONFIG).map(([status, cfg]) => (
           <button key={status} onClick={()=>setAvailFilter(availFilter===status?'All':status)}
@@ -611,7 +629,12 @@ export default function ManpowerPage() {
       )}
 
       {editModal.isOpen && (
-        <EmployeeModal employee={editModal.employee} projects={projects} onClose={()=>setEditModal({isOpen:false, employee:null})} onSave={load} />
+        <EmployeeModal 
+            employee={editModal.employee} 
+            employees={employees} 
+            projects={projects} 
+            onClose={()=>setEditModal({isOpen:false, employee:null})} 
+        />
       )}
       {bulkModal && (
           <BulkScheduleModal 
@@ -619,7 +642,6 @@ export default function ManpowerPage() {
             employees={employees} 
             projects={projects}
             onClose={() => setBulkModal(false)} 
-            onSave={load} 
         />
       )}
     </div>

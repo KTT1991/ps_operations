@@ -14,6 +14,7 @@ const createService = (collectionName) => ({
     return snap.exists() ? { id: snap.id, ...snap.data() } : null;
   },
   async create(data) {
+    // This generic create is the issue for projects. It uses auto-ID.
     if (data.id) {
       await setDoc(doc(db, collectionName, data.id), {
         ...data,
@@ -27,7 +28,7 @@ const createService = (collectionName) => ({
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-    return { id: ref.id, ...data };cg
+    return { id: ref.id, ...data };
   },
   async update(id, data) {
     await updateDoc(doc(db, collectionName, id), {
@@ -48,10 +49,39 @@ const createService = (collectionName) => ({
 });
 
 export const assetsService = createService('assets');
-export const projectsService = createService('projects');
 export const employeesService = createService('employees');
 export const maintenanceService = createService('maintenance');
 export const inventoryService = createService('inventory');
+
+// Custom Project Service to handle specific logic
+const genericProjectsService = createService('projects');
+export const projectsService = {
+  ...genericProjectsService,
+  
+  async create(data) {
+    const newId = `PRJ-${Date.now()}`;
+    const projectData = { ...data };
+    if (projectData.projectNumber) {
+      projectData.projectNo = projectData.projectNumber;
+      delete projectData.projectNumber;
+    }
+    await setDoc(doc(db, 'projects', newId), {
+      ...projectData,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return { id: newId, ...projectData };
+  },
+
+  async update(id, data) {
+    const projectData = { ...data };
+    if (projectData.projectNumber) {
+      projectData.projectNo = projectData.projectNumber;
+      delete projectData.projectNumber;
+    }
+    return genericProjectsService.update(id, projectData);
+  },
+};
 
 // New History Services
 export const equipmentHistoryService = createService('equipmentHistory');
@@ -86,5 +116,5 @@ export const getSystemAlerts = (assets = [], employees = []) => {
     });
   });
 
-  return alerts.sort((a, b) => ({ danger:0, warning:1, info:2 })[a.type] - ({ danger:0, warning:1, info:2 })[b.type]);
+  return alerts.sort((a, b) => ({ danger:0, warning:1, info:2 })[a.type] - ({ danger:0, warning:1, info:2 })[a.type]);
 };
