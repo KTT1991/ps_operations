@@ -5,8 +5,7 @@ import { exportProjectsToExcel } from '../../utils/exportUtils';
 import { differenceInDays, parseISO } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
-// Import the new shared modal
-import ProjectModal from './ProjectModal'; 
+import ProjectModal from './ProjectModal';
 
 const STATUS_CFG = {
   Active:       { dot:'bg-green-500',  text:'text-green-600',  bdark:'bg-green-900/30 border-green-700/50'  },
@@ -23,10 +22,12 @@ function ProjectCard({ project, assets, employees, onEdit }) {
   const daysLeft = project.endDate ? differenceInDays(parseISO(project.endDate), new Date()) : null;
   const pm = employees.find(e=>e.id===project.projectManager);
   
-  // This logic should be updated if a more direct link is established
-  const actualEquip = assets.filter(a => a.currentProjectId === project.id).length;
+  // FIX: Compare asset's `currentProject` field with the project's `projectNo` field.
+  const assignedEquipment = assets.filter(a => a.currentProject === project.projectNo && a.status === 'In Use').length;
+  
+  // FIX: Assume employee schedules also use `projectNo` for consistency.
   const assignedManpower = employees.reduce((count, emp) => {
-      const isAssigned = (emp.schedule || []).some(s => s.projectId === project.id && s.type === 'Assignment');
+      const isAssigned = (emp.schedule || []).some(s => s.projectId === project.projectNo && s.type === 'Assignment');
       return count + (isAssigned ? 1 : 0);
   }, 0);
 
@@ -98,13 +99,13 @@ function ProjectCard({ project, assets, employees, onEdit }) {
 
         <div className="grid grid-cols-3 gap-2 text-xs">
           {[
-            {Icon:Package, label:'Equipment',   value:actualEquip||'—'},
-            {Icon:Users,   label:'Manpower', value:assignedManpower||'—'}, 
-            {Icon:Calendar,label:'Budget', value:project.budget?`฿${(project.budget/1000000).toFixed(1)}M`:'—'},
+            {Icon:Package, label:'Equipment', value: assignedEquipment},
+            {Icon:Users,   label:'Manpower',  value: assignedManpower},
+            {Icon:Calendar,label:'Budget',    value: project.budget ? `฿${(project.budget/1000000).toFixed(1)}M` : '—'},
           ].map(({Icon,label,value})=>(
             <div key={label} className="bg-slate-800/50 rounded-lg p-2 text-center">
               <Icon className="w-3.5 h-3.5 mx-auto mb-1 text-slate-500"/>
-              <div className="font-bold text-slate-200">{value}</div>
+              <div className="font-bold text-slate-200">{value ?? '—'}</div>
               <div className="text-[10px] text-slate-400">{label}</div>
             </div>
           ))}

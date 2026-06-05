@@ -40,8 +40,8 @@ service cloud.firestore {
     // Projects
     match /projects/{projectId} {
       allow read: if isAuthenticated();
-      allow create, update: if isOperationsManager();
-      allow delete: if isAdmin();
+      allow create, update: if isAuthenticated() && getUserRole() in ['admin', 'operations_manager', 'user'];
+      allow delete: if isAuthenticated() && getUserRole() in ['admin', 'user'];
     }
 
     // Maintenance records

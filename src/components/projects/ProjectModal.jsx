@@ -73,9 +73,9 @@ export default function ProjectModal({ project, employees, onClose, onSave, onVi
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose}/>
-      <div className="relative modal-bg border rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-fade-in shadow-2xl">
+      <div className="relative modal-bg border rounded-xl w-full max-w-2xl flex flex-col max-h-[90vh] shadow-2xl overflow-hidden">
 
-        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 border-b">
+        <div className="flex-shrink-0 modal-bg flex items-center justify-between px-5 py-4 border-b">
           <h2 className="font-semibold text-sm">
             {project ? 'Edit Project' : 'Add New Project'}
           </h2>
@@ -90,7 +90,7 @@ export default function ProjectModal({ project, employees, onClose, onSave, onVi
           </div>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
              <div>
               <label className="text-xs block mb-1 text-[var(--t-text3)]">Project Number</label>
@@ -222,7 +222,7 @@ export default function ProjectModal({ project, employees, onClose, onSave, onVi
           </div>
         </div>
 
-        <div className="sticky bottom-0 z-10 flex items-center justify-between px-5 py-4 border-t">
+        <div className="flex-shrink-0 modal-bg flex items-center justify-between px-5 py-4 border-t">
           <div>{project&&<button onClick={del} className="btn-danger text-xs flex items-center gap-1"><Trash2 className="w-3.5 h-3.5"/>Delete</button>}</div>
           <div className="flex gap-2">
             <button onClick={onClose} className="btn-secondary">Cancel</button>

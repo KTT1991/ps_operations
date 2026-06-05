@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { equipmentHistoryService, employeesService, projectsService, assetsService } from '../../services/firebaseService';
-import { Clock, Search, Package, Users, Briefcase, ArrowLeft, ExternalLink, ArrowDownCircle, ArrowUpCircle, Edit3, PlusCircle, Info, ArrowRight } from 'lucide-react';
+import { Clock, Search, Package, Users, Briefcase, ArrowLeft, ExternalLink, ArrowDownCircle, ArrowUpCircle, Edit3, PlusCircle, Info, ArrowRight, MessageSquare } from 'lucide-react';
 import { format, isAfter, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
@@ -45,8 +45,11 @@ function HistoryItem({ item }) {
                         ))}
                     </div>
                 )}
-                 {item.jobCardNo && <div className="text-xs mt-2 text-gray-500 font-mono">Manifest: {item.jobCardNo}</div>}
-                 {item.projectId && <div className="text-xs mt-1 text-gray-500 font-mono">Project ID: {item.projectId}</div>}
+                <div className='mt-2 space-y-1 text-xs'>
+                    {item.jobCardNo && <div className="flex items-center gap-2 text-gray-500 font-mono"><span className='font-semibold text-gray-400'>Manifest:</span> {item.jobCardNo}</div>}
+                    {item.projectId && <div className="flex items-center gap-2 text-gray-500 font-mono"><span className='font-semibold text-gray-400'>Project:</span> {item.projectId}</div>}
+                    {item.notes && <div className="flex items-start gap-2 text-gray-500"><MessageSquare className="w-3.5 h-3.5 mt-0.5 flex-shrink-0"/><span className='italic'>{item.notes}</span></div>}
+                </div>
             </div>
         </div>
     );
@@ -93,17 +96,72 @@ function ManpowerTimelineView({ employee, onBack }) {
     );
 }
 
-function ProjectDetailView({ project, assets, manpower, onBack }) {
+function ProjectDetailView({ project, manpower, allHistory, allAssets, onBack }) {
+    const projectHistory = (allHistory || [])
+        .filter(h => h.projectId === project.id)
+        .sort((a, b) => (b.timestamp?.toDate() || 0) - (a.timestamp?.toDate() || 0));
+
+    const getAssetName = (refNo) => {
+        const asset = allAssets.find(a => a.assetNo === refNo || a.id === refNo);
+        return asset ? asset.name : refNo;
+    };
+
+    const ProjectHistoryItem = ({ item }) => {
+        const ICONS = {
+            'Load In': <ArrowDownCircle className="w-5 h-5 text-green-500" />,
+            'Load Out': <ArrowUpCircle className="w-5 h-5 text-red-500" />,
+        };
+        const icon = ICONS[item.activityType] || <Edit3 className="w-5 h-5 text-blue-500" />;
+        const date = item.timestamp?.toDate ? format(item.timestamp.toDate(), 'dd MMM yyyy, HH:mm') : 'Invalid Date';
+
+        return (
+            <div className="flex gap-4">
+                <div>{icon}</div>
+                <div className="flex-1 border-l border-gray-200 dark:border-gray-700 pl-4 pb-6 last:border-l-transparent last:pb-0">
+                    <div className="flex justify-between items-center">
+                         <p className="font-semibold text-gray-800 dark:text-white">
+                           {item.refNo} - <span className="text-gray-400 dark:text-gray-500 font-normal">{getAssetName(item.refNo)}</span>
+                        </p>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 font-mono flex-shrink-0 ml-2">{date}</span>
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{item.activityType} by {item.modifiedBy}</div>
+                    {item.notes && <div className="text-xs italic text-gray-500 mt-1 flex gap-2"><MessageSquare className="w-3 h-3 mt-0.5"/>{item.notes}</div>}
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div className="animate-fade-in">
-            <div className='flex items-center gap-3 mb-4'><button onClick={onBack} className='btn-secondary p-2'><ArrowLeft className='w-4 h-4'/></button><h3 className="text-lg font-semibold text-gray-900 dark:text-white">Project Snapshot: <span className='text-orange-500'>{project.name}</span></h3></div>
-            <div className="space-y-6">
-                <div><h4 className="text-base font-semibold text-gray-700 dark:text-gray-300 mb-2">Assigned Assets ({assets.length})</h4><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">{assets.map(a => <div key={a.id} className="bg-white dark:bg-gray-800 p-2 rounded-md border border-gray-200 dark:border-gray-700 text-sm">{a.name}</div>)}</div></div>
-                <div><h4 className="text-base font-semibold text-gray-700 dark:text-gray-300 mb-2">Assigned Manpower ({manpower.length})</h4><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">{manpower.map(e => <div key={e.id} className="bg-white dark:bg-gray-800 p-2 rounded-md border border-gray-200 dark:border-gray-700 text-sm">{e.name}</div>)}</div></div>
+            <div className='flex items-center gap-3 mb-4'>
+                <button onClick={onBack} className='btn-secondary p-2'><ArrowLeft className='w-4 h-4'/></button>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Project History: <span className='text-orange-500'>{project.name}</span></h3>
+            </div>
+            <div className="space-y-8">
+                <div>
+                    <h4 className="text-base font-semibold text-gray-700 dark:text-gray-300 mb-3">Equipment Movement History</h4>
+                    <div className="max-h-[500px] overflow-y-auto pr-2">
+                         {projectHistory.length > 0 ? (
+                            projectHistory.map(item => <ProjectHistoryItem key={item.id} item={item} />)
+                        ) : (
+                            <div className="text-center py-10 text-gray-500 dark:text-gray-400">No equipment history found for this project.</div>
+                        )}
+                    </div>
+                </div>
+                <div>
+                    <h4 className="text-base font-semibold text-gray-700 dark:text-gray-300 mb-2">Currently Assigned Manpower ({manpower.length})</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {manpower.length > 0
+                            ? manpower.map(e => <div key={e.id} className="bg-white dark:bg-gray-800 p-2 rounded-md border border-gray-200 dark:border-gray-700 text-sm">{e.name}</div>)
+                            : <p className="text-sm text-gray-500 dark:text-gray-400 col-span-full">No manpower currently assigned.</p>
+                        }
+                    </div>
+                </div>
             </div>
         </div>
     );
 }
+
 
 const ResultsTable = ({ headers, data, onDrillDown, renderRow }) => (
     <div className="overflow-x-auto animate-fade-in"><table className="w-full text-sm text-left text-gray-600 dark:text-gray-300">
@@ -170,9 +228,8 @@ export default function HistoryPage() {
 
     const handleDrillDown = (item) => {
         if (mode === 'project') {
-            const assignedAssets = allAssets.filter(a => a.projectNo === item.projectNo);
             const assignedManpower = allEmployees.filter(e => e.schedule?.some(s => s.projectNo === item.projectNo && s.type === 'Assignment' && (!s.endDate || isAfter(parseISO(s.endDate), new Date()))));
-            setDetailView({ type: 'project_detail', item, related: { assets: assignedAssets, manpower: assignedManpower } });
+            setDetailView({ type: 'project_detail', item, related: { manpower: assignedManpower, history: allEquipmentHistory, assets: allAssets } });
         } else if (mode === 'manpower') {
             setDetailView({ type: 'manpower_timeline', item });
         } else {
@@ -192,7 +249,7 @@ export default function HistoryPage() {
         if (detailView) {
             if (detailView.type === 'asset_timeline') return <AssetTimelineView asset={detailView.item} allHistory={allEquipmentHistory} onBack={() => setDetailView(null)} />;
             if (detailView.type === 'manpower_timeline') return <ManpowerTimelineView employee={detailView.item} onBack={() => setDetailView(null)} />;
-            if (detailView.type === 'project_detail') return <ProjectDetailView project={detailView.item} assets={detailView.related.assets} manpower={detailView.related.manpower} onBack={() => setDetailView(null)} />;
+            if (detailView.type === 'project_detail') return <ProjectDetailView project={detailView.item} manpower={detailView.related.manpower} allHistory={detailView.related.history} allAssets={detailView.related.assets} onBack={() => setDetailView(null)} />;
         }
         if (loading) return <div className="text-center py-20 text-gray-500 dark:text-gray-400">Loading resource data...</div>;
         if (!isSearched) return <div className="text-center py-20 text-gray-500 dark:text-gray-400">Enter a search term to explore resources.</div>;
