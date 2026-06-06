@@ -43,13 +43,21 @@ export default function TimelinePage() {
   const [selected,  setSelected]  = useState(null);
   const navigate = useNavigate();
 
-  const load = async () => {
+  useEffect(() => {
     setLoading(true);
-    const [p, e] = await Promise.all([projectsService.getAll(), employeesService.getAll()]);
-    setProjects(p); setEmployees(e);
-    setLoading(false);
-  };
-  useEffect(()=>{ load(); },[]);
+    const unsubProjects = projectsService.subscribe(data => {
+      setProjects(data);
+      setLoading(false);
+    });
+    const unsubEmployees = employeesService.subscribe(data => {
+      setEmployees(data);
+    });
+
+    return () => {
+      unsubProjects();
+      unsubEmployees();
+    };
+  }, []);
 
   const today = new Date(); today.setHours(0,0,0,0);
   const viewEnd   = addMonths(viewStart, viewMonths);
@@ -102,7 +110,7 @@ export default function TimelinePage() {
     all: projects.length,
     active: projects.filter(p=>p.status==='Active').length,
     preparing: projects.filter(p=>['Planned','Preparing','Mobilizing'].includes(p.status)).length,
-    delayed: projects.filter(p=>p.status==='Delayed').length,
+    completed: projects.filter(p=>p.status==='Completed').length,
   };
 
   return (
@@ -133,7 +141,7 @@ export default function TimelinePage() {
           {label:'Total Projects', value:counts.all,       color:'#e2e8f0'},
           {label:'Active Now',    value:counts.active,    color:'#22c55e'},
           {label:'In Preparation', value:counts.preparing, color:'#3b82f6'},
-          {label:'Delayed',   value:counts.delayed,   color:'#ef4444'},
+          {label:'Completed',   value:counts.completed,   color:'#94a3b8'},
         ].map(k=>(
           <div key={k.label} className="kpi-card">
             <div className="text-2xl font-bold" style={{color:k.color}}>{k.value}</div>
@@ -327,7 +335,7 @@ export default function TimelinePage() {
 
       {showModal&&(
         <ProjectModal project={selected} employees={employees}
-          onClose={()=>setShowModal(false)} onSave={load}/>
+          onClose={()=>setShowModal(false)} onSave={()=>setShowModal(false)}/>
       )}
     </div>
   );
