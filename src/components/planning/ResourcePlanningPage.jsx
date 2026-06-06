@@ -51,30 +51,40 @@ function isEmployeeAvailable(emp, fromDate, toDate) {
   }
 
   // 2. Check for schedule conflicts
-  const schedule = emp.schedule || [];
+  const schedule = (emp.schedule || []).map(s => ({ ...s, startDate: parse(s.startDate), endDate: parse(s.endDate) }));
   const requiredStart = fromDate;
-  // If toDate is not provided, check for a single day.
   const requiredEnd = toDate || fromDate;
 
-  for (const entry of schedule) {
-    const entryStart = parse(entry.startDate);
-    // If an entry has no end date, treat it as ongoing to a far future date.
-    const entryEnd = entry.endDate ? parse(entry.endDate) : new Date('2999-12-31');
+  const conflictingEntry = schedule.find(entry => {
+    if (!entry.startDate) return false;
+    const entryEnd = entry.endDate || new Date('2999-12-31');
+    const isOverlapping = isBefore(requiredStart, entryEnd) && isAfter(requiredEnd, entry.startDate);
+    return isOverlapping;
+  });
 
-    if (entryStart) {
-      // Standard check for overlapping intervals: (StartA <= EndB) and (StartB <= EndA)
-      const isOverlapping = isBefore(requiredStart, entryEnd) && isAfter(requiredEnd, entryStart);
-
-      if (isOverlapping) {
-        return { 
-          ok: false, 
-          reason: `${entry.type}: ${entry.details} (${format(entryStart, 'dd MMM')} - ${entry.endDate ? format(entryEnd, 'dd MMM') : 'Present'})`
-        };
-      }
-    }
+  if (conflictingEntry) {
+    return { 
+      ok: false, 
+      reason: `${conflictingEntry.type}: ${conflictingEntry.details} (${format(conflictingEntry.startDate, 'dd MMM')} - ${conflictingEntry.endDate ? format(conflictingEntry.endDate, 'dd MMM') : 'Present'})`
+    };
   }
   
-  // 3. If no conflicts found, the employee is available.
+  // 3. If available, find the next assignment to provide more detail.
+  const isSingleDateCheck = isEqual(fromDate, requiredEnd);
+  if (isSingleDateCheck) {
+    const nextAssignment = schedule
+      .filter(entry => entry.startDate && isAfter(entry.startDate, fromDate))
+      .sort((a, b) => a.startDate - b.startDate)[0];
+
+    if (nextAssignment) {
+      return {
+        ok: true,
+        reason: `Available until ${format(nextAssignment.startDate, 'dd MMM yyyy')}`
+      };
+    }
+  }
+
+  // 4. If no conflicts found, the employee is available.
   return { ok: true, reason: 'Available' };
 }
 

@@ -55,7 +55,7 @@ function SidebarContent({ open, user, userRole, onClose, onLogout }) {
         </div>
         {open && (
           <div className="overflow-hidden">
-            <div className="text-sm font-bold tracking-wider whitespace-nowrap" style={{color:'var(--t-text)'}}>OGS OPSCENTER</div>
+            <div className="text-sm font-bold tracking-wider whitespace-nowrap" style={{color:'var(--t-text)'}}>PS SONGKHLA</div>
             <div className="text-[10px] tracking-widest uppercase whitespace-nowrap" style={{color:'var(--t-text3)'}}>Operations Platform</div>
           </div>
         )}

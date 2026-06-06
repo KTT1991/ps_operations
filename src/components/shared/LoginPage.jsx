@@ -58,7 +58,7 @@ const quickLogin = async (acc) => {
             <Zap className="w-8 h-8 text-white" strokeWidth={2.5}/>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white tracking-wider">OGS OPSCENTER</h1>
+            <h1 className="text-2xl font-bold text-white tracking-wider">PS SONGKHLA</h1>
             <p className="text-[var(--t-text3)] text-sm mt-1">Operations & Asset Management</p>
           </div>
         </div>
@@ -108,7 +108,7 @@ const quickLogin = async (acc) => {
           </form>
         </div>
 
-        <p className="text-center text-xs text-slate-700">OGS OpsCenter v3.0 — Enterprise Oil & Gas Operations</p>
+        <p className="text-center text-xs text-slate-700">PS Songkhla — Enterprise Oil & Gas Operations</p>
       </div>
     </div>
   );
