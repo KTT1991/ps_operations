@@ -1,0 +1,235 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { @apply scroll-smooth; }
+
+  :root, html.light {
+    --t-bg:      #f8fafc;
+    --t-bg2:     #ffffff;
+    --t-bg3:     #f1f5f9;
+    --t-bg4:     #e2e8f0;
+    --t-text:    #0f172a;
+    --t-text2:   #334155;
+    --t-text3:   #64748b;
+    --t-border:  #e2e8f0;
+    --t-border2: #cbd5e1;
+    --t-shadow:  0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+  }
+
+  html.dark {
+    --t-bg:      #0f172a;
+    --t-bg2:     #1e293b;
+    --t-bg3:     #334155;
+    --t-bg4:     #475569;
+    --t-text:    #f8fafc;
+    --t-text2:   #cbd5e1;
+    --t-text3:   #94a3b8;
+    --t-border:  rgba(255,255,255,.1);
+    --t-border2: rgba(255,255,255,.18);
+    --t-shadow:  none;
+  }
+
+  body {
+    background: var(--t-bg);
+    color: var(--t-text);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    transition: background .2s, color .2s;
+    -webkit-font-smoothing: antialiased;
+  }
+  * { box-sizing: border-box; }
+
+  ::-webkit-scrollbar       { width:5px; height:5px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  html.dark  ::-webkit-scrollbar-thumb { background:#334155; border-radius:99px; }
+  html.light ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:99px; }
+}
+
+@layer components {
+  /* Card */
+  .card {
+    background: var(--t-bg2);
+    border: 1px solid var(--t-border);
+    border-radius: .75rem;
+    box-shadow: var(--t-shadow);
+    transition: background .2s, border-color .2s;
+  }
+  .card-header {
+    padding: .875rem 1.125rem;
+    border-bottom: 1px solid var(--t-border);
+  }
+
+  /* KPI */
+  .kpi-card {
+    background: var(--t-bg2);
+    border: 1px solid var(--t-border);
+    border-radius: .75rem;
+    padding: 1.125rem;
+    display: flex; flex-direction: column; justify-content: space-between;
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.03);
+    transition: all .2s ease-in-out;
+    cursor: default;
+    position: relative;
+    overflow: hidden;
+  }
+  .kpi-card:hover {
+    border-color: var(--t-border2);
+    box-shadow: 0 4px 12px -2px rgb(0 0 0 / 0.07);
+    transform: translateY(-1px);
+  }
+
+  /* Section title */
+  .section-title {
+    font-size: 1.05rem; font-weight: 600;
+    letter-spacing: .04em; text-transform: uppercase;
+    color: var(--t-text);
+  }
+
+  /* Table */
+  .data-table { width:100%; border-collapse:collapse; font-size:.8125rem; text-align:left; }
+  .data-table thead th {
+    padding:.5rem .875rem;
+    font-size:.6875rem; font-weight:600;
+    text-transform:uppercase; letter-spacing:.05em;
+    color: var(--t-text3);
+    background: var(--t-bg3);
+    border-bottom: 1px solid var(--t-border);
+    white-space: nowrap;
+  }
+  .data-table tbody td {
+    padding:.5rem .875rem;
+    color: var(--t-text2);
+    border-bottom: 1px solid var(--t-border);
+    vertical-align: middle;
+  }
+  .data-table tbody tr:last-child td { border-bottom:none; }
+  .data-table tbody tr:hover td { background: var(--t-bg3); }
+
+  /* Inputs */
+  .input-field {
+    width:100%; padding:.45rem .625rem;
+    background: var(--t-bg2);
+    border: 1px solid var(--t-border2);
+    border-radius: .5rem;
+    color: var(--t-text);
+    font-size: .8125rem;
+    outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .input-field::placeholder { color: var(--t-text3); }
+  .input-field:focus { border-color:#ea580c; box-shadow:0 0 0 2px rgba(234,88,12,.15); }
+  .select-field { @apply input-field; appearance:none; cursor:pointer; }
+
+  /* Buttons */
+  .btn-primary {
+    display:inline-flex; align-items:center; gap:.375rem;
+    padding:.45rem .875rem;
+    background:#ea580c; color:#fff;
+    font-size:.8125rem; font-weight:600;
+    border-radius:.5rem; border:none; cursor:pointer;
+    box-shadow: 0 1px 2px 0 rgba(234,88,12,.2);
+    transition: background .15s, transform .1s;
+  }
+  .btn-primary:hover { background:#c2410c; }
+  .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
+
+  .btn-secondary {
+    display:inline-flex; align-items:center; gap:.375rem;
+    padding:.45rem .875rem;
+    background: var(--t-bg2); color: var(--t-text2);
+    font-size:.8125rem; font-weight:500;
+    border-radius:.5rem; border:1px solid var(--t-border2); cursor:pointer;
+    transition: background .15s, color .15s;
+  }
+  .btn-secondary:hover { background: var(--t-bg3); color: var(--t-text); }
+
+  .btn-danger {
+    display:inline-flex; align-items:center; gap:.375rem;
+    padding:.45rem .875rem;
+    background:#dc2626; color:#fff;
+    font-size:.8125rem; font-weight:500;
+    border-radius:.5rem; border:none; cursor:pointer;
+    transition: background .15s;
+  }
+  .btn-danger:hover { background:#b91c1c; }
+
+  .btn-ghost {
+    display:inline-flex; align-items:center; gap:.375rem;
+    padding:.35rem .6rem;
+    background:transparent; color: var(--t-text3);
+    font-size:.8125rem;
+    border-radius:.5rem; border:1px solid transparent; cursor:pointer;
+    transition: background .15s, color .15s;
+  }
+  .btn-ghost:hover { background: var(--t-bg3); color: var(--t-text); }
+
+  /* Action buttons (Pastel) */
+  .btn-action-in {
+    display:inline-flex; align-items:center; gap:4px;
+    padding:3px 9px; border-radius:6px;
+    font-size:.75rem; font-weight:600;
+    background:#dcfce7; color:#15803d; border:1px solid #bbf7d0;
+    cursor:pointer; transition: background .15s, transform .1s;
+  }
+  .btn-action-in:hover { background:#bbf7d0; }
+
+  .btn-action-out {
+    display:inline-flex; align-items:center; gap:4px;
+    padding:3px 9px; border-radius:6px;
+    font-size:.75rem; font-weight:600;
+    background:#ffedd5; color:#c2410c; border:1px solid #fed7aa;
+    cursor:pointer; transition: background .15s, transform .1s;
+  }
+  .btn-action-out:hover { background:#fed7aa; }
+
+  /* Layout helpers */
+  .sidebar-bg { background: var(--t-bg2); border-color: var(--t-border); }
+  .topbar-bg  { background: var(--t-bg2); border-color: var(--t-border); }
+  .main-bg    { background: var(--t-bg); }
+  .modal-bg   { background: var(--t-bg2); border-color: var(--t-border); }
+
+  .sidebar-item {
+    display:flex; align-items:center; gap:.625rem;
+    padding:.5rem .625rem;
+    border-radius:.5rem;
+    color: var(--t-text2); font-size:.8125rem;
+    cursor:pointer;
+    transition: background .12s, color .12s;
+    border:1px solid transparent; text-decoration:none;
+  }
+  .sidebar-item:hover { background: #fff7ed; color: #ea580c; }
+  .sidebar-item.active {
+    background: #ffedd5;
+    border-color: #fed7aa;
+    color: #c2410c;
+    font-weight: 600;
+  }
+
+  /* Badges — Soft Pastel Tones (Clean, beautiful pastel colors as shown in screenshot) */
+  .badge             { display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:6px; font-size:.75rem; font-weight:600; line-height:1.2; }
+  .badge-available   { display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:6px; font-size:.75rem; font-weight:600; background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; } /* Soft Mint Green */
+  .badge-in-use      { display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:6px; font-size:.75rem; font-weight:600; background:#e0f2fe; color:#0284c7; border:1px solid #bae6fd; } /* Soft Sky / Baby Blue */
+  .badge-maintenance { display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:6px; font-size:.75rem; font-weight:600; background:#fef9c3; color:#a16207; border:1px solid #fef08a; } /* Soft Butter Yellow (like Debug/Log) */
+  .badge-damaged     { display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:6px; font-size:.75rem; font-weight:600; background:#ffe4e6; color:#be123c; border:1px solid #fecdd3; } /* Soft Rose / Pastel Pink */
+  .badge-reserved    { display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:6px; font-size:.75rem; font-weight:600; background:#ffedd5; color:#c2410c; border:1px solid #fed7aa; } /* Soft Peach / Apricot (like Warning) */
+  .badge-standby     { display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:6px; font-size:.75rem; font-weight:600; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; } /* Soft Slate */
+  .badge-purple      { display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:6px; font-size:.75rem; font-weight:600; background:#ede9fe; color:#7c3aed; border:1px solid #ddd6fe; } /* Soft Lavender (like App) */
+
+  /* Progress */
+  .progress-bar  { height:.375rem; background: var(--t-bg4); border-radius:99px; overflow:hidden; }
+  .progress-fill { height:100%; border-radius:99px; transition:width .4s; }
+
+  /* Misc */
+  .alert-dot { width:.5rem; height:.5rem; border-radius:50%; animation:pulse 2s infinite; }
+}
+
+/* Recharts */
+.recharts-text { fill: var(--t-text3) !important; font-size:11px !important; }
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical   line { stroke: var(--t-border) !important; }
+
+/* Animations */
+@keyframes pulse  { 0%,100%{opacity:1} 50%{opacity:.35} }
+@keyframes fadeIn { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:translateY(0)} }
+.animate-fade-in  { animation: fadeIn .22s ease-out; }

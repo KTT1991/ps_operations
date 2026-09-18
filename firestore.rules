@@ -1,0 +1,142 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function getUserRole() {
+      return getUserData().role;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getUserRole() == 'admin';
+    }
+
+    function isSafety() {
+      return isAuthenticated() && getUserRole() in ['admin', 'safety'];
+    }
+
+    function isStoreman() {
+      return isAuthenticated() && getUserRole() in ['admin', 'storeman', 'operations_manager', 'base_manager'];
+    }
+
+    function isHR() {
+      return isAuthenticated() && getUserRole() in ['admin', 'hr', 'safety'];
+    }
+
+    function isProjectManager() {
+      return isAuthenticated() && getUserRole() in ['admin', 'project_manager', 'operations_manager', 'base_manager'];
+    }
+
+    function isOperationsManager() {
+      return isAuthenticated() && getUserRole() in ['admin', 'operations_manager', 'base_manager'];
+    }
+
+    function isMaintenance() {
+      return isAuthenticated() && getUserRole() in ['admin', 'operations_manager', 'maintenance', 'base_manager'];
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Assets (Operations, Maintenance, and Storeman for movement)
+    match /assets/{assetId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOperationsManager() || isMaintenance() || isStoreman();
+      allow delete: if isAdmin();
+    }
+
+    // Projects (Restricted: Admin, Operations Manager, Project Manager, Base Manager. User / Tech CANNOT write)
+    match /projects/{projectId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isProjectManager() || isOperationsManager();
+      allow delete: if isAdmin();
+    }
+
+    // Maintenance records
+    match /maintenance/{recordId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isMaintenance();
+      allow delete: if isOperationsManager();
+    }
+
+    // Employees
+    match /employees/{empId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() || isHR() || isOperationsManager();
+      allow delete: if isAdmin();
+    }
+
+    // Training Employees (Only Admin & Safety can create/update)
+    match /trainingEmployees/{empId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isSafety() || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Inventory
+    match /inventory/{itemId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isMaintenance() || isStoreman();
+      allow delete: if isOperationsManager();
+    }
+
+    // ==========================================
+    // Training Records Module Collections
+    // ==========================================
+
+    // Courses (Master Catalog: Admin & Safety)
+    match /courses/{courseId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isSafety() || isAdmin();
+    }
+
+    // Training Matrix (Admin & Safety)
+    match /trainingMatrix/{matrixId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isSafety() || isAdmin();
+    }
+
+    // Training Log (APPEND-ONLY: ONLY Admin or Safety can create or soft-cancel)
+    match /trainingLog/{logId} {
+      allow read: if isAuthenticated();
+      allow create: if isSafety() || isAdmin();
+      // Only soft-cancel permitted by Admin/Safety
+      allow update: if (isSafety() || isAdmin()) && request.resource.data.cancelled == true;
+      allow delete: if false; // Hard delete strictly forbidden
+    }
+
+    // Latest Training (Computed compliance statuses: AVB / REM / EXP / NOT_TRAINED)
+    match /latestTraining/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isSafety() || isAdmin();
+    }
+
+    // Audit Log (Append-Only)
+    match /auditLog/{auditId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if false; // Immutable audit trail
+    }
+
+    // Equipment History & Manpower History
+    match /equipmentHistory/{histId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /manpowerHistory/{histId} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

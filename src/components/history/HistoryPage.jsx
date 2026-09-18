@@ -1,0 +1,226 @@
+
+import React, { useState, useEffect } from 'react';
+import { employeesService, projectsService, assetsService, equipmentHistoryService } from '../../services/firebaseService';
+import { Clock, Search, Package, Users, Briefcase, ArrowLeft, ExternalLink, ArrowDownCircle, ArrowUpCircle, Edit3, PlusCircle, Info, ArrowRight, MessageSquare, MapPin, Calendar, Coffee, Wrench } from 'lucide-react';
+import { format, isAfter, parseISO } from 'date-fns';
+import toast from 'react-hot-toast';
+import clsx from 'clsx';
+
+const SCHEDULE_TYPE_CONFIG = {
+    Assignment: { icon: Briefcase, color: 'text-blue-400' },
+    Leave: { icon: Coffee, color: 'text-amber-400' },
+    Training: { icon: Users, color: 'text-purple-400' },
+    'Standby / Maintenance': { icon: Wrench, color: 'text-slate-400' },
+};
+
+function AssetTimelineView({ asset, allHistory, onBack }) {
+    const records = (allHistory || []).filter(h => h.refId === asset.id).sort((a, b) => (b.timestamp?.toDate() || 0) - (a.timestamp?.toDate() || 0));
+    
+    const statusColors = {
+        'Available': 'text-green-600 dark:text-green-400',
+        'In Use': 'text-blue-600 dark:text-blue-400',
+        'Reserved': 'text-cyan-600 dark:text-cyan-400',
+        'Under Maintenance': 'text-amber-600 dark:text-amber-400',
+        'Damaged': 'text-red-600 dark:text-red-400',
+    };
+    const statusColor = statusColors[asset.status] || 'text-gray-500 dark:text-gray-400';
+
+    return (
+        <div className="animate-fade-in">
+            <div className='flex items-center gap-3 mb-4'><button onClick={onBack} className='btn-secondary p-2'><ArrowLeft className='w-4 h-4'/></button><h3 className="text-lg font-semibold text-gray-900 dark:text-white">Asset Timeline: <span className='text-orange-500'>{asset.name} ({asset.assetNo})</span></h3></div>
+            <div className="bg-gray-100 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-4">
+                <div><div className="text-xs text-gray-500 dark:text-gray-400">Status</div><div className={clsx("font-semibold", statusColor)}>{asset.status || 'N/A'}</div></div>
+                <div><div className="text-xs text-gray-500 dark:text-gray-400">Location</div><div className="font-semibold text-gray-800 dark:text-gray-200">{asset.currentLocation || asset.location || 'Depot'}</div></div>
+                <div><div className="text-xs text-gray-500 dark:text-gray-400">Project</div><div className="font-semibold text-gray-800 dark:text-gray-200">{asset.projectNo || 'Unassigned'}</div></div>
+            </div>
+            <div className="text-center py-10 text-gray-500 dark:text-gray-400">Asset history not implemented yet.</div>
+        </div>
+    );
+}
+
+function ManpowerTimelineView({ employee, onBack }) {
+    const schedule = (employee.schedule || []).sort((a, b) => isAfter(parseISO(b.startDate), parseISO(a.startDate)) ? 1 : -1);
+    
+    return (
+       <div className="animate-fade-in">
+           <div className='flex items-center justify-between gap-3 mb-4'>
+                <div className='flex items-center gap-3'>
+                    <button onClick={onBack} className='btn-secondary p-2'><ArrowLeft className='w-4 h-4'/></button>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Work History: <span className='text-orange-500'>{employee.name}</span></h3>
+                </div>
+           </div>
+           {schedule.length > 0 ? (
+                <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                    <table className="w-full text-sm text-left text-gray-600 dark:text-gray-300">
+                        <thead className="text-xs text-gray-700 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-800/50">
+                            <tr>
+                                <th scope="col" className="px-4 py-3">Type</th>
+                                <th scope="col" className="px-4 py-3">Details</th>
+                                <th scope="col" className="px-4 py-3">Location</th>
+                                <th scope="col" className="px-4 py-3">Start Date</th>
+                                <th scope="col" className="px-4 py-3">End Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {schedule.map((item, idx) => {
+                                const { type, location, startDate, endDate, projectName, projectNo, details } = item;
+                                const detailText = projectNo ? `${projectNo} - ${projectName}` : (projectName || details);
+                                const Icon = SCHEDULE_TYPE_CONFIG[type]?.icon || Info;
+                                const color = SCHEDULE_TYPE_CONFIG[type]?.color || 'text-gray-400';
+
+                                return (
+                                    <tr key={idx} className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 last:border-b-0">
+                                        <td className="px-4 py-3 font-semibold">
+                                            <div className={clsx("flex items-center gap-2", color)}>
+                                                <Icon className="w-4 h-4" />
+                                                {type}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 text-gray-800 dark:text-gray-200">{detailText}</td>
+                                        <td className="px-4 py-3">{location}</td>
+                                        <td className="px-4 py-3 font-sans">{format(parseISO(startDate), 'dd MMM yyyy')}</td>
+                                        <td className="px-4 py-3 font-sans">{endDate ? format(parseISO(endDate), 'dd MMM yyyy') : 'N/A'}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+           ) : (
+                <div className="text-center py-10 text-gray-500 dark:text-gray-400">No work history records found for this employee.</div>
+           )}
+       </div>
+   );
+}
+
+function ProjectDetailView({ project, manpower, allHistory, allAssets, onBack }) {
+    const projectHistory = (allHistory || []).filter(h => h.projectId === project.id).sort((a, b) => (b.timestamp?.toDate() || 0) - (a.timestamp?.toDate() || 0));
+    const getAssetName = (refNo) => allAssets.find(a => a.assetNo === refNo || a.id === refNo)?.name || refNo;
+
+    const ProjectHistoryItem = ({ item }) => {
+        const ICONS = { 'Load In': <ArrowDownCircle className="w-5 h-5 text-green-500" />, 'Load Out': <ArrowUpCircle className="w-5 h-5 text-red-500" /> };
+        const icon = ICONS[item.activityType] || <Edit3 className="w-5 h-5 text-blue-500" />;
+        const date = item.timestamp?.toDate ? format(item.timestamp.toDate(), 'dd MMM yyyy, HH:mm') : 'Invalid Date';
+
+        return (
+            <div className="flex gap-4"><div className="pt-1">{icon}</div><div className="flex-1 border-l border-gray-200 dark:border-gray-700 pl-4 pb-8 last:border-l-transparent last:pb-0"><div className="flex justify-between items-start"><p className="font-semibold text-gray-800 dark:text-white">{item.refNo} - <span className="text-gray-400 dark:text-gray-500 font-normal">{getAssetName(item.refNo)}</span></p><span className="text-xs text-gray-500 dark:text-gray-400 font-sans flex-shrink-0 ml-2">{date}</span></div><div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{item.activityType} by {item.modifiedBy}</div>{item.notes && <div className="text-xs italic text-gray-500 mt-2 flex gap-2"><MessageSquare className="w-3.5 h-3.5 mt-0.5"/>{item.notes}</div>}</div></div>
+        );
+    };
+
+    return (
+        <div className="animate-fade-in">
+            <div className='flex items-center gap-3 mb-4'><button onClick={onBack} className='btn-secondary p-2'><ArrowLeft className='w-4 h-4'/></button><h3 className="text-lg font-semibold text-gray-900 dark:text-white">Project Details: <span className='text-orange-500'>{project.name}</span></h3></div>
+            <div className="space-y-8"><h4 className="text-base font-semibold text-gray-700 dark:text-gray-300 mb-3">Equipment Movement History</h4><div className="max-h-[400px] overflow-y-auto pr-2">{projectHistory.length > 0 ? projectHistory.map(item => <ProjectHistoryItem key={item.id} item={item} />) : <div className="text-center py-10 text-gray-500 dark:text-gray-400">No equipment history.</div>}</div><h4 className="text-base font-semibold text-gray-700 dark:text-gray-300 mb-2">Assigned Manpower ({manpower.length})</h4><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">{manpower.length > 0 ? manpower.map(e => <div key={e.id} className="bg-white dark:bg-gray-800 p-2 rounded-md border border-gray-200 dark:border-gray-700 text-sm">{e.name}</div>) : <p className="text-sm text-gray-500 dark:text-gray-400 col-span-full">No manpower assigned.</p>}</div></div>
+        </div>
+    );
+}
+
+const ResultsTable = ({ headers, data, onDrillDown, renderRow }) => (<div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700"><table className="w-full text-sm text-left text-gray-600 dark:text-gray-300"><thead className="text-xs text-gray-700 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-800/50"><tr>{headers.map((h,i) => <th key={i} scope="col" className="px-4 py-3">{h}</th>)}</tr></thead><tbody>{data.map(item => renderRow({ item, onDrillDown }))}</tbody></table></div>);
+const AssetRow = ({ item, onDrillDown }) => (<tr key={item.id} onClick={() => onDrillDown(item)} className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer"><td className="px-4 py-2 font-sans">{item.assetNo}</td><td className="px-4 py-2 font-medium text-gray-900 dark:text-white">{item.name}</td><td className="px-4 py-2">{item.type}</td><td className="px-4 py-2"><span className={clsx('px-2 py-0.5 rounded-full text-xs font-semibold', item.status === 'Available' ? 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200' : 'bg-amber-100 text-amber-800 dark:bg-amber-800 dark:text-amber-200')}>{item.status}</span></td><td className="px-4 py-2 text-right"><ExternalLink className="w-4 h-4 text-gray-400 dark:text-gray-500"/></td></tr>);
+const ManpowerRow = ({ item, onDrillDown }) => (<tr key={item.id} onClick={() => onDrillDown(item)} className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer"><td className="px-4 py-2 font-medium text-gray-900 dark:text-white">{item.name}</td><td className="px-4 py-2">{item.position}</td><td className="px-4 py-2">{item.department}</td><td className="px-4 py-2 text-right"><ExternalLink className="w-4 h-4 text-gray-400 dark:text-gray-500"/></td></tr>);
+const ProjectRow = ({ item, onDrillDown }) => (<tr key={item.id} onClick={() => onDrillDown(item)} className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer"><td className="px-4 py-2 font-sans">{item.projectNo}</td><td className="px-4 py-2 font-medium text-gray-900 dark:text-white">{item.name}</td><td className="px-4 py-2">{item.clientName}</td><td className="px-4 py-2 text-right"><ExternalLink className="w-4 h-4 text-gray-400 dark:text-gray-500"/></td></tr>);
+
+export default function HistoryPage() {
+    const [mode, setMode] = useState('manpower');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [results, setResults] = useState(null);
+    const [detailView, setDetailView] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [isSearched, setIsSearched] = useState(false);
+
+    const [allEmployees, setAllEmployees] = useState([]);
+    const [allProjects, setAllProjects] = useState([]);
+    const [allAssets, setAllAssets] = useState([]);
+    const [allEquipmentHistory, setAllEquipmentHistory] = useState([]);
+
+    useEffect(() => {
+        setLoading(true);
+        const unsubEmployees = employeesService.subscribe(setAllEmployees);
+        const unsubProjects = projectsService.subscribe(setAllProjects);
+        const unsubAssets = assetsService.subscribe(setAllAssets);
+        const unsubEquipHistory = equipmentHistoryService.subscribe(setAllEquipmentHistory);
+        setLoading(false);
+        
+        return () => {
+            unsubEmployees();
+            unsubProjects();
+            unsubAssets();
+            unsubEquipHistory();
+        };
+    }, []);
+
+    const handleSearch = () => {
+        if (!searchTerm.trim()) return;
+        setLoading(true);
+        setIsSearched(true);
+        setDetailView(null);
+        const lowerTerm = searchTerm.toLowerCase();
+        let searchResult = [];
+        if (mode === 'asset') {
+            searchResult = allAssets.filter(a => (a.assetNo?.toLowerCase().includes(lowerTerm)) || (a.name?.toLowerCase().includes(lowerTerm)) || (a.type?.toLowerCase().includes(lowerTerm)));
+        } else if (mode === 'manpower') {
+            searchResult = allEmployees.filter(e => (e.name?.toLowerCase().includes(lowerTerm)) || (e.position?.toLowerCase().includes(lowerTerm)));
+        } else if (mode === 'project') {
+            searchResult = allProjects.filter(p => (p.projectNo?.toLowerCase().includes(lowerTerm)) || (p.name?.toLowerCase().includes(lowerTerm)) || (p.clientName?.toLowerCase().includes(lowerTerm)));
+        }
+        setResults(searchResult);
+        setLoading(false);
+    };
+
+    const handleDrillDown = (item) => {
+        if (mode === 'manpower') {
+            setDetailView({ type: 'manpower_timeline', item });
+        } else if (mode === 'asset') {
+            setDetailView({ type: 'asset_timeline', item, related: { history: allEquipmentHistory } });
+        } else if (mode === 'project') {
+            const assignedManpower = allEmployees.filter(e => e.schedule?.some(s => s.projectNo === item.projectNo && s.type === 'Assignment' && (!s.endDate || isAfter(parseISO(s.endDate), new Date()))));
+            setDetailView({ type: 'project_detail', item, related: { manpower: assignedManpower, history: allEquipmentHistory, assets: allAssets } });
+        }
+    };
+    
+    const handleTabChange = (newMode) => {
+        setMode(newMode);
+        setSearchTerm('');
+        setResults(null);
+        setIsSearched(false);
+        setDetailView(null);
+    }
+
+    const CurrentView = () => {
+        if (detailView) {
+            if (detailView.type === 'manpower_timeline') return <ManpowerTimelineView employee={detailView.item} onBack={() => setDetailView(null)} />;
+            if (detailView.type === 'asset_timeline') return <AssetTimelineView asset={detailView.item} allHistory={detailView.related.history} onBack={() => setDetailView(null)} />;
+            if (detailView.type === 'project_detail') return <ProjectDetailView project={detailView.item} manpower={detailView.related.manpower} allHistory={detailView.related.history} allAssets={detailView.related.assets} onBack={() => setDetailView(null)} />;
+        }
+        if (loading) return <div className="text-center py-20 text-gray-500 dark:text-gray-400">Loading...</div>;
+        if (!isSearched) return <div className="text-center py-20 text-gray-500 dark:text-gray-400">Enter a search term to explore resources.</div>;
+        if (!results || results.length === 0) return <div className="text-center py-20 text-gray-500 dark:text-gray-400">No results found.</div>;
+
+        if (mode === 'manpower') return <ResultsTable headers={['Name', 'Position', 'Department', '']} data={results} onDrillDown={handleDrillDown} renderRow={ManpowerRow} />;
+        if (mode === 'asset') return <ResultsTable headers={['Asset No', 'Name', 'Type', 'Status', '']} data={results} onDrillDown={handleDrillDown} renderRow={AssetRow} />;
+        if (mode === 'project') return <ResultsTable headers={['Project No', 'Name', 'Client', '']} data={results} onDrillDown={handleDrillDown} renderRow={ProjectRow} />;
+        return null;
+    };
+
+    const TABS = [{ id: 'asset', label: 'Asset Explorer', icon: Package }, { id: 'manpower', label: 'Manpower History', icon: Users }, { id: 'project', label: 'Project View', icon: Briefcase }];
+    const placeholderText = { asset: "Search Asset No, Name, Type...", manpower: "Search Employee Name, Position...", project: "Search Project No, Name, Client..." }[mode];
+
+    return (
+        <div className="space-y-5 animate-fade-in">
+            <div className="max-w-7xl mx-auto">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-200 mb-4">Resource Explorer</h1>
+            <div className="bg-white dark:bg-gray-800/70 p-4 rounded-lg border border-gray-200 dark:border-gray-700/50 mb-6">
+                <div className="flex border-b border-gray-200 dark:border-gray-700 -mx-4 px-4">
+                    {TABS.map(tab => <button key={tab.id} onClick={() => handleTabChange(tab.id)} className={clsx("flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors", mode === tab.id ? 'text-orange-500 border-orange-500' : 'text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-800 dark:hover:text-white')}><tab.icon className="w-4 h-4"/>{tab.label}</button>)}
+                </div>
+                <div className="flex items-center gap-2 pt-4">
+                    <div className="relative flex-grow"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" /><input type="text" placeholder={placeholderText} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSearch()} className="input-field pl-9 w-full" /></div>
+                    <button onClick={handleSearch} className="btn-primary min-w-[100px]">Search</button>
+                </div>
+            </div>
+            <div className="bg-white dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700/50 min-h-[400px]">
+                <CurrentView />
+            </div>
+        </div></div>
+    );
+}

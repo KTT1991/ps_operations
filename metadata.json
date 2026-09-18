@@ -1,0 +1,8 @@
+{
+  "name": "OGS OpsCenter",
+  "description": "Enterprise Operations & Asset Management System for Oil & Gas service companies",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
